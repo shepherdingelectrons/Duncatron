@@ -1,3 +1,5 @@
+# This code runs on the Pyboard v1.0 and puts interesting stuff into RAM!
+
 from pyb import Pin
 import random
 
@@ -123,16 +125,15 @@ datapins = setup_datapins()
 print("Number of DATA pins:",len(datapins))
 print("Number of ADDR pins:",len(addrpins))
 
-LED_CE = Pin('X17', Pin.OUT_PP, pull=Pin.PULL_UP)
-LED_CE.value(0)
-
+##LED_CE = Pin('X17', Pin.OUT_PP, pull=Pin.PULL_UP)
+##LED_CE.value(0)
 
 RAM = MemoryAccess(CEpin='Y10',READwritepin='Y12', OE='Y11')
 RAM.chipEnable()
 
-LED_CE.value(1) # Might be needed or not for bus arbitration, not 100% sure.
-microwait(1000000)
-LED_CE.value(0)
+##LED_CE.value(1)
+##microwait(1000000)
+##LED_CE.value(0)
 
 import math
 
