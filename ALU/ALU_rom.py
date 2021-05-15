@@ -11,6 +11,10 @@ def AddCommand(instruction, control, mode, Cin):
     # Cin = 1 means Cin = HIGH
     # Cin = 0 means Cin = 0
 
+    # Byte format:
+    #   7   6   5   4   3   2   1   0
+    #   x   x   Cin M   C3  C2  C1  C0
+    
     addr_CL = instruction & 0x0F
     addr_CH = (instruction & 0x0F) | (1<<4)
 
@@ -31,7 +35,7 @@ AddCommand(2, 0b0100, 1, 1) # NAND int
 AddCommand(3, 0b0101, 1, 1) # NOT int
 AddCommand(4, 0b0110, 1, 1) # XOR int
 AddCommand(5, 0b0110, 0, 0) # SUB int
-AddCommand(6, 0b0110, 0, 3) # SUBC int
+AddCommand(6, 0b0110, 0, 2) # SUBC int
 AddCommand(7, 0b1001, 0, 1) # ADD int
 AddCommand(8, 0b1011, 1, 1) # AND int
 AddCommand(9, 0b1100, 0, 1) # SHL (A+A)
