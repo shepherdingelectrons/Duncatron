@@ -28,23 +28,47 @@ def AddCommand(instruction, control, mode, Cin):
     else:
         ROM[addr_CL] = output | (Cin<<5)
         ROM[addr_CH] = output | (Cin<<5)
-        
-AddCommand(0, 0b0000, 1, 1) # NOT
-AddCommand(1, 0b0001, 1, 1) # NOR int
-AddCommand(2, 0b0100, 1, 1) # NAND int
-AddCommand(3, 0b0101, 1, 1) # NOT int
-AddCommand(4, 0b0110, 1, 1) # XOR int
-AddCommand(5, 0b0110, 0, 0) # SUB int
-AddCommand(6, 0b0110, 0, 2) # SUBC int
-AddCommand(7, 0b1001, 0, 1) # ADD int
-AddCommand(8, 0b1011, 1, 1) # AND int
-AddCommand(9, 0b1100, 0, 1) # SHL (A+A)
-AddCommand(10, 0b1110, 1, 1) # OR int
-AddCommand(11, 0b1111, 0, 1) # DEC
-AddCommand(12, 0b1100, 0, 2) # RCL = 2A+Flag_Carry
-AddCommand(13, 0b0011, 1, 1) # CLR (A=0)
-AddCommand(14, 0b1001, 0, 2) # ADDC int
-AddCommand(15, 0b0110, 0, 0) # CMP int
+
+# New ALU command set:
+#ALU_INSTRUCTIONS = ["ADD A,B","SUB A,B","CMP A,B","DEC A",
+#"ADDC A,B","SUBC A,B","CMPC A,B","NOT A",
+#"SHL A","XOR A,B","NAND A,B","OR A,B",
+#"INC A","AND A,B", "NOR A,B", "RCL A"]
+
+AddCommand(0, 0b1001, 0, 1) # ADD A,B
+AddCommand(1, 0b0110, 0, 0) # SUB A,B
+AddCommand(2, 0b0110, 0, 0) # CMP A,B
+AddCommand(3, 0b1111, 0, 1) # DEC A
+AddCommand(4, 0b1001, 0, 2) # ADDC A,B
+AddCommand(5, 0b0110, 0, 2) # SUBC A,B
+AddCommand(6, 0b0110, 0, 2) # CMPC A,B
+AddCommand(7, 0b0101, 1, 1) # NOT A
+AddCommand(8, 0b1100, 0, 1) # SHL A
+AddCommand(9, 0b0110, 1, 1) # XOR A,B
+AddCommand(10, 0b0100, 1, 1) # NAND A,B
+AddCommand(11, 0b1110, 1, 1) # OR A,B
+AddCommand(12, 0b1001, 0, 1) # INC A (uses ADDC ALU settings)
+AddCommand(13, 0b1011, 1, 1) # AND int
+AddCommand(14, 0b0001, 1, 1) # NOR int
+AddCommand(15, 0b1100, 0, 2) # RCL = 2A+Flag_Carry
+
+# Previous ALU command set:
+##AddCommand(0, 0b0000, 1, 1) # NOT
+##AddCommand(1, 0b0001, 1, 1) # NOR int
+##AddCommand(2, 0b0100, 1, 1) # NAND int
+##AddCommand(3, 0b0101, 1, 1) # NOT int
+##AddCommand(4, 0b0110, 1, 1) # XOR int
+##AddCommand(5, 0b0110, 0, 0) # SUB int
+##AddCommand(6, 0b0110, 0, 2) # SUBC int
+##AddCommand(7, 0b1001, 0, 1) # ADD int
+##AddCommand(8, 0b1011, 1, 1) # AND int
+##AddCommand(9, 0b1100, 0, 1) # SHL (A+A)
+##AddCommand(10, 0b1110, 1, 1) # OR int
+##AddCommand(11, 0b1111, 0, 1) # DEC
+##AddCommand(12, 0b1100, 0, 2) # RCL = 2A+Flag_Carry
+##AddCommand(13, 0b0011, 1, 1) # CLR (A=0)
+##AddCommand(14, 0b1001, 0, 2) # ADDC int
+##AddCommand(15, 0b0110, 0, 0) # CMP int
 
 for i in range(0,16):
 	print(i,bin(ROM[i]),bin(ROM[i+16]))
