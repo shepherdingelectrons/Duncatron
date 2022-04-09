@@ -1,0 +1,78 @@
+	mov U,0x41	; A
+	mov U,0x42	; B
+	mov U,0x43	; C
+	
+	mov r0r1,0x1234
+	push_PC+1
+	call fibo
+dudu: 
+	mov U,0x44
+	halt
+
+0x1000:
+fibo:
+	mov r1,0x01
+	mov r2,0x00
+
+fibo.start:
+	mov A,r2	; Fn = Fn-2
+	add A,r1	; Fn = Fn-2 + Fn-1
+	jc fibo.end
+
+	mov r2,r1	; Fn-2 = Fn-1
+	mov r1,A	; Fn-1 = Fn
+	
+	push_PC+1
+	call hex8bit
+	
+	mov U,0x0A 	; Newline
+	mov U,0x0D
+	
+	jmp fibo.start
+fibo.end:
+	mov A,0x45	; A='E' (test for correct RET behaviour)
+	ret
+
+0x1100: 	; Needs to be pagealigned for now
+hex8bit:
+;A contains number
+	mov r0,A ; make a copy
+
+	rcl A
+	rcl A
+	rcl A
+	rcl A
+	rcl A
+	and A,0x0F ; upper 4-bits isolated
+
+	cmp A,0x0A
+	jge letters
+	; digits here
+	add A,0x30
+	jmp outputdigit
+    letters:
+	add A,0x37
+    outputdigit:
+	mov U,A
+
+	mov A,r0
+	and A,0x0F ; lower 4-bits
+
+	cmp A,0x0A
+	jge letters2
+	; digits here
+	add A,0x30
+	jmp outputdigits2
+    letters2:
+	add A,0x37
+	
+    outputdigits2:
+	mov U,A	
+	ret
+
+0x7050:
+INT_VEC:
+reti
+
+0x8800:
+db 0x07,0x50
