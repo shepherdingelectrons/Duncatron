@@ -1,7 +1,7 @@
 	mov U,0x41	; A
 	mov U,0x42	; B
 	mov U,0x43	; C
-	
+
 	mov r0r1,0x1234
 	push_PC+1
 	call fibo
@@ -33,7 +33,7 @@ fibo.end:
 	mov A,0x45	; A='E' (test for correct RET behaviour)
 	ret
 
-0x1100: 	; Needs to be pagealigned for now
+0x110: 	; Needs to be pagealigned for now
 hex8bit:
 ;A contains number
 	mov r0,A ; make a copy

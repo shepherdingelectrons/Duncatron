@@ -2,12 +2,18 @@ import define_instructions
 import re
 
 class Assembler:
+    ADDRESS_DEFINITION = 256
+    LABEL_DEFINITION = 257
+    CALL_OR_JMP_TO_LABEL = 258
+    
     def __init__(self,filename,memory):
         self.lines = []
         self.memory = memory
         self.instruction_str = ""
         self.read_and_clean_file(filename)
         self.asmregex = []
+        self.labels = {} # Dictionary of labels and their memory addresses
+        self.labelref = []
     
     def read_and_clean_file(self,filename):
         with open(filename) as file:
@@ -15,7 +21,39 @@ class Assembler:
                 if ";" in line:
                     line = line[:line.find(";")]
                 self.lines.append(line.strip())
+                
+    def add_label(self,newlabel,address):
+        if newlabel in self.labels:
+            print("ERROR: Label '"+newlabel+"' already declared!")
+            return False
+        self.labels[newlabel]=address
+        return True
 
+    def add_call_or_jmp_reference(self, label, address):
+        # 'address' is the memory address of the call_instruction (not the label address, we don't know that necessarily yet)
+        jmpto = None
+        if label in self.labels:
+            jmpto = self.labels[label]
+
+        if jmpto==None:
+            self.labelref.append((label,address)) # record where the call/jmp label instruction was to backfill address later
+            return False
+        
+        return True
+
+    def backfill_references(self):
+        for reference in self.labelref:
+            label,address = reference
+            if not label in self.labels:
+                print("ERROR. "+reference+" referenced but not declared")
+                return False
+            else:
+                label_address = self.labels[label]
+                self.memory[address] = label_address>>8
+                self.memory[address+1] = label_address & 0xFF
+                print("Backed filled '"+label+"' at address:"+hex(address))
+        return True
+    
     def assemble(self):
         if not self.make_regex(): return False
         
@@ -28,10 +66,34 @@ class Assembler:
 
             asm = self.machinecode(cleaned_line)
             if asm:
-                for byte in asm:
-                    self.memory[pointer]=byte
-                    pointer+=1
-                
+                opcode = asm[0]
+                if opcode<256: # a normal instruction, write into memory
+                    for byte in asm:
+                        self.memory[pointer]=byte
+                        pointer+=1
+                elif opcode==self.ADDRESS_DEFINITION: # other behaviour specified
+                    if asm[1]<pointer:
+                        print("ERROR. Memory label ("+hex(asm[1])+") on line number",line_number,"must be declared at higher address than current pointer ("+hex(pointer)+")")
+                        return False
+                    pointer=asm[1]
+                elif opcode==self.LABEL_DEFINITION:
+                    if not self.add_label(asm[1],pointer):
+                        return False
+                elif opcode == self.CALL_OR_JMP_TO_LABEL:
+                    found = self.add_call_or_jmp_reference(asm[2],pointer+1)
+                    if found:
+                        myline = asm[1]+" 0x"+format(self.labels[asm[2]], '04x')
+                    else:
+                        myline = asm[1]+" 0x0000"
+                        
+                    newasm = self.machinecode(myline) # add dummy address as padding for now
+                    for byte in newasm:
+                        self.memory[pointer]=byte
+                        pointer+=1
+                else:
+                    print("Don't know how to process opcode! OPCODE=",opcode)
+                    return False
+        self.backfill_references()
         return True
 
     def make_regex(self):
@@ -52,7 +114,19 @@ class Assembler:
             regex += "$"
             # hex matching on numbers and generate call/jmp regex for text?
             self.asmregex.append((regex,machine_code))
-   
+
+        self.asmregex.append(("^0x([0-9]{4}):$",self.ADDRESS_DEFINITION))
+        self.asmregex.append(("^(.*):$",self.LABEL_DEFINITION))
+
+        JMPs = ["JZ","JNZ","JE","JNE","JG","JGE","JL","JLE","JMP","JC","JNC"]
+        CALLs =["CALL Z","CALL NZ","CALL E","CALL NE","CALL G","CALL GE","CALL L","CALL LE","CALL","CALL C","CALL NC"]
+
+        callsAndjmps = JMPs+CALLs
+        
+        for instruction in callsAndjmps:
+            regex = "^("+instruction+") ([^0][^x].*)$"
+            self.asmregex.append((regex,self.CALL_OR_JMP_TO_LABEL))
+        
         return True
     
     def machinecode(self,asm_line):
@@ -66,7 +140,11 @@ class Assembler:
             if match_result:
                 machine_code.append(opcode)
                 for match in match_result.groups():
-                    machine_code.append(int("0x"+match,16))             
+                    try:
+                        machine_code.append(int("0x"+match,16))
+                    except ValueError:
+                        machine_code.append(match)
+                    
                 matched=True
         if matched==False:
             print("Could not match line:",asm_line)
@@ -121,7 +199,7 @@ if __name__=="__main__":
         print("Assembling successful")
     else:
         print("Assembling failed!")
-    
+    print(asm.labelref)
 ##asm("MOV B,0x20")
 ##asm("ADD A,B")
 ##asm("JMP 0x1234")
