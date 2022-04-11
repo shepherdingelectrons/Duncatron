@@ -5,6 +5,8 @@ class Assembler:
     ADDRESS_DEFINITION = 256
     LABEL_DEFINITION = 257
     CALL_OR_JMP_TO_LABEL = 258
+    DATABYTES = 259
+    DATASTRING = 260
     
     def __init__(self,filename,memory):
         self.lines = []
@@ -51,7 +53,6 @@ class Assembler:
                 label_address = self.labels[label]
                 self.memory[address] = label_address>>8
                 self.memory[address+1] = label_address & 0xFF
-                print("Backed filled '"+label+"' at address:"+hex(address))
         return True
     
     def assemble(self):
@@ -90,11 +91,44 @@ class Assembler:
                     for byte in newasm:
                         self.memory[pointer]=byte
                         pointer+=1
+                elif opcode == self.DATABYTES:
+                    bytelist = asm[1].split(",")
+                    for databyte in bytelist:
+                        int_byte = self.process_databyte(databyte.strip())
+                        if int_byte==False:
+                            print("Could not process data byte '"+databyte+"' at line number:",line_number)
+                            return False
+                        self.memory[pointer]=int_byte
+                        pointer+=1
+                elif opcode == self.DATASTRING:
+                    datastr = asm[1]
+                    for character in asm[1]:
+                        self.memory[pointer]=ord(character)
+                        pointer+=1
+                    self.memory[pointer]=0
+                    pointer+=1
                 else:
                     print("Don't know how to process opcode! OPCODE=",opcode)
                     return False
-        self.backfill_references()
-        return True
+            elif asm==False:
+                print("Failed to generate machine code on line:",line_number,":",line)
+                return False
+        return self.backfill_references()
+    
+    def process_databyte(self, data_byte):
+        # hex byte
+        hex_regex = "^0x[0-9A-Fa-f][0-9A-Fa-f]$"
+        match = re.match(hex_regex,data_byte,re.IGNORECASE)
+        if match:
+            return int(match.group(0),16)
+        
+        # integer (base-10)
+        int_regex = "^([0-9]*)$"
+        match = re.match(int_regex,data_byte,re.IGNORECASE)
+        if match:
+            return(int(match.group(1)))
+
+        return False
 
     def make_regex(self):
         if len(self.instruction_str)==0:
@@ -126,6 +160,9 @@ class Assembler:
         for instruction in callsAndjmps:
             regex = "^("+instruction+") ([^0][^x].*)$"
             self.asmregex.append((regex,self.CALL_OR_JMP_TO_LABEL))
+
+        self.asmregex.append(("^db (.*)$",self.DATABYTES))
+        self.asmregex.append(("^dstr '(.*)'$",self.DATASTRING))
         
         return True
     
@@ -147,8 +184,7 @@ class Assembler:
                     
                 matched=True
         if matched==False:
-            print("Could not match line:",asm_line)
-            return []
+            return False
         return machine_code
     
     def clean_operands(self,operands):
@@ -193,17 +229,9 @@ if __name__=="__main__":
     asm = Assembler("testasm3.txt",memory)
     asm.instruction_str = define_instructions.instruction_str
 
-    #asm.asmregex.append(("call .*",0xFE
     success = asm.assemble()
     if success:
         print("Assembling successful")
     else:
         print("Assembling failed!")
-    print(asm.labelref)
-##asm("MOV B,0x20")
-##asm("ADD A,B")
-##asm("JMP 0x1234")
-##
-##print(asm("CALL 0x1200"))
-##print(asm("CALL 0x1234"))
 
