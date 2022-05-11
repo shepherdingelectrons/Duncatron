@@ -1,7 +1,9 @@
 import re
 
 class Optimiser:
-    def __init__(self, pattern_dict={}):
+    def __init__(self, temp_regs):
+        temp_reg_match = self.build_temp_reg_match(temp_regs) 
+        pattern_dict = {"*r":"r0|r1|r2|r3|r4|r5","*j":"je|jne|jle|jl|jge|jg|jz|jnz","*m":temp_reg_match,"*J":"jmp|je|jne|jle|jl|jge|jg|jz|jnz"}
         self.pattern_dict = {"*h":"[0-9A-Fa-f][0-9A-Fa-f]","*t":".*"} # double Hex characters by default
         self.pattern_dict.update(pattern_dict)
         self.patterns=[]
@@ -19,6 +21,17 @@ class Optimiser:
         self.processes.append(process)
         
         return len(self.patterns)-1 # could be used as an index ID
+    
+    def build_temp_reg_match(self,temp_regs):
+        temp_reg_match=""
+        for tr in temp_regs:
+            for c in tr:
+                addc=c
+                if c=="[" or c=="]": addc="\\"+c # Add escape characters for memory locations
+                temp_reg_match+=addc
+            temp_reg_match+="|"
+        if temp_reg_match: temp_reg_match=temp_reg_match[:-1]
+        return temp_reg_match
     
     def getRegex(self, string):
         for p in self.pattern_dict:
@@ -130,7 +143,77 @@ class Optimiser:
                 removed_lines=""
                 
         return (opt_text,update)
-            
+
+    def optimise_code(self, ASMcode):
+        # Conditional jumping optimisations
+        #asmOptimiser.addPattern(["mov *r,1","cmp A,B","*j *t","mov %0,0","%2:","mov A,%0","cmp A,0x00","jz *t"],["cmp A,B","%1 %3"]) # all registers
+        self.addPattern(["mov *m,0x01","cmp A,B","*j *t","mov %0,0x00","%2:","mov A,%0","cmp A,0x00","jz *t"],["cmp A,B","%1 %3"]) # temp register storage
+
+        inverse_conditionals = {"jl":"jge","jg":"jle","je":"jne","jne":"je","jle":"jg","jge":"jl","jz":"jnz","jnz":"jz"}
+        self.addPattern(["mov *m,0x01","cmp A,B","*j *t","mov %0,0x00","%2:","mov A,%0","cmp A,0x00","jnz *t"],["cmp A,B","(%1) %3"],process=lambda a:inverse_conditionals[a]) # temp register storage
+
+        # Optimise for A = 0xXX + 0xYY
+        self.addPattern(["mov A,0x*h","mov B,0x*h","add A,B"],["mov A,(0x%0+0x%1)"],process=lambda a: '0x{:02X}'.format(int(eval(a))&0xff))
+
+        # Optimise for: r0 = A, A = r0 + B = A + B
+        self.addPattern(["mov *r,A","mov A,*t","mov B,%0","add A,B"],["mov B,%1","add A,B"]) # Kinda assumes that register %0 is not used later on.
+        self.addPattern(["mov *m,A","mov A,*t","mov B,%0","add A,B"],["mov B,%1","add A,B"]) # Kinda assumes that register %0 is not used later on.
+
+        # Optimise for cmp A directly to literal
+        self.addPattern(["mov B,0x*h","cmp A,B"],["cmp A,0x%0"])
+
+        # Optimise for inc A
+        self.addPattern(["mov B,0x01","add A,B"],["inc A"])
+
+##        # Optimise for xor A
+##        self.addPattern(["mov A,0x00"],["xor A"])
+
+        # Remove repeated labels
+        self.addPattern(["*t:","*t:"],["(%0,%1):"],process=lambda a: curate_labels(a))
+
+        # Remove repetition when moving a value into multiple memory locations/registers
+        self.addPattern(["mov B,0x*h","mov *t,B","mov A,0x%0","mov *t,A"],["mov A,0x%0","mov %1,A","mov %2,A"])
+
+        # For loop optimisation
+        self.addPattern(["mov \[0x*t],A","*t:","mov A,\[0x%0]"],["mov [0x%0],A","%1:"]) 
+
+        opt_text = self.ApplyAll(ASMcode)
+
+        # make list of out of date labels from label_remap and use that to do a search pattern (include jmp)
+        remap_jmps = self.addPattern(["*J *t"],["%0 (%1)"],process=lambda a:GetRemapLabel(a)) 
+
+        opt_text,updated = self.ApplyOptimisation(opt_text,remap_jmps)
+        #print(opt_text)
+        return(opt_text)
+
+        # notes on possible optimisations:
+
+        # DONE - (1)- if/while conditional logic when only a single level deep - can be substantially optimised4
+        # (2) mov B,0xXY
+        # cmp A,B -->> cmp A,0xXY
+        # DONE - remove multiple labels and track so jumps can be updated
+
+        # Per function (OptimiseFunctionsForRegisters):
+        #   - What registers are not used in this function?
+        #   - What variables (memory) are used most often?
+        #   - Sort memory usage and map memory-variables to unused registers
+        #   - Note that function modifies registers so should push/pop them (within the function) onto/from the stack.
+
+        # asm... use #pragma statements
+
+label_remap={}
+def curate_labels(labels):
+    label0,label1=labels.split(',')
+   # label0 is going to replace label1
+       
+    label_remap[label1]=label0
+    return label0
+
+def GetRemapLabel(l):
+    while l in label_remap:
+        l = label_remap[l]
+    return l
+
 
 if __name__  == "__main__":
     asmOptimiser = Optimiser(pattern_dict = {"*r":"r0|r1|r2|r10","*j":"je|jne|jle|jl|jge|jg|jz|jnz"})
@@ -147,3 +230,5 @@ if __name__  == "__main__":
     print(orig_text)
     print("****** AFTER ******")
     print(opt_text)
+
+    

@@ -1,7 +1,4 @@
 # CPU
-import control_EEPROM0
-import control_EEPROM1
-import control_EEPROM2
 
 class signal():
     def __init__(self,signalname,activeLow=False,demux=False):
@@ -209,9 +206,9 @@ class ControlLogic():
         C = 1 if FLAGS&2 else 0
         
         address = (Z<<12)|(C<<11)|(self.microcode_counter<<8)|I_reg.value
-        control_byte0 = control_EEPROM0.control0[address]
-        control_byte1 = control_EEPROM1.control1[address]
-        control_byte2 = control_EEPROM2.control2[address]
+        control_byte0 = control0[address] # control_EEPROM0
+        control_byte1 = control1[address]
+        control_byte2 = control2[address]
 
         if verbose: print("Addr=",address,"Microcode_counter=",self.microcode_counter,control_byte0,control_byte1,control_byte2)
         for s in range(0,len(signal_group)):
@@ -502,6 +499,15 @@ PC.valueHI=0x00
 
 F_reg.value = (ALU_carry<<1)
 I_reg.value = 0x0 
+
+if __name__=="__main__":
+    from control_EEPROM0 import control0
+    from control_EEPROM1 import control1
+    from control_EEPROM2 import control2
+else:
+    from .control_EEPROM0 import control0
+    from .control_EEPROM1 import control1
+    from .control_EEPROM2 import control2
 
 ##Memory[0x0000]=69
 ##Memory[0x8000]=0xFF # nop

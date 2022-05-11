@@ -1,4 +1,3 @@
-import define_instructions
 import re
 
 class Assembler:
@@ -8,14 +7,24 @@ class Assembler:
     DATABYTES = 259
     DATASTRING = 260
     
-    def __init__(self,filename,memory):
+    def __init__(self,filename,memory,text):
         self.lines = []
         self.memory = memory
         self.instruction_str = ""
-        self.read_and_clean_file(filename)
+        if filename!=None:
+            self.read_and_clean_file(filename)
+        else:
+            self.read_and_clean_text(text)
+        
         self.asmregex = []
         self.labels = {} # Dictionary of labels and their memory addresses
         self.labelref = []
+
+    def read_and_clean_text(self,text):
+        for line in text.split("\n"):
+            if ";" in line:
+                line = line[:line.find(";")]
+            self.lines.append(line.strip())
     
     def read_and_clean_file(self,filename):
         with open(filename) as file:
@@ -47,7 +56,7 @@ class Assembler:
         for reference in self.labelref:
             label,address = reference
             if not label in self.labels:
-                print("ERROR. "+reference+" referenced but not declared")
+                print("ERROR. "+label+" referenced but not declared")
                 return False
             else:
                 label_address = self.labels[label]
@@ -158,7 +167,8 @@ class Assembler:
         callsAndjmps = JMPs+CALLs
         
         for instruction in callsAndjmps:
-            regex = "^("+instruction+") ([^0][^x].*)$"
+            #regex = "^("+instruction+") ([^0][^x].*)$"
+            regex = "^("+instruction+") ([^0^x].*)$"
             self.asmregex.append((regex,self.CALL_OR_JMP_TO_LABEL))
 
         self.asmregex.append(("^db (.*)$",self.DATABYTES))
@@ -225,8 +235,10 @@ class Assembler:
         return cleaned
         
 if __name__=="__main__":
+    #from .define_instructions import define_instructions
+    import define_instructions
     memory = bytearray(0x10000)
-    asm = Assembler("testasm3.txt",memory)
+    asm = Assembler("testasm3.txt",memory,"")
     asm.instruction_str = define_instructions.instruction_str
 
     success = asm.assemble()

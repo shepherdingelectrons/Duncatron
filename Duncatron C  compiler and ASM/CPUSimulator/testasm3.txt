@@ -17,7 +17,7 @@ fibo:
 fibo.start:
 	mov A,r2	; Fn = Fn-2
 	add A,r1	; Fn = Fn-2 + Fn-1
-	jc fibo.end
+	jc fibo.end5
 
 	mov r2,r1	; Fn-2 = Fn-1
 	mov r1,A	; Fn-1 = Fn
@@ -29,7 +29,7 @@ fibo.start:
 	mov U,0x0D
 	
 	jmp fibo.start
-fibo.end:
+fibo.end5:
 	mov A,0x45	; A='E' (test for correct RET behaviour)
 	ret
 

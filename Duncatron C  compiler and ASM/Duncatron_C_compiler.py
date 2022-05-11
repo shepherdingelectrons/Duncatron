@@ -10,7 +10,7 @@ import re
 # This is not required if you've installed pycparser into
 # your site-packages/ with setup.py
 #
-sys.path.extend(['.', '..'])
+#sys.path.extend(['.', '..'])
 from pycparser import c_parser
 
 #variables = {} # type, init, address
@@ -28,9 +28,7 @@ nodeASM = {"TypeDecl":"mov A,%0\nmov [%1],A\t;%2=%0\n",
 
 reg_list={"r0":0,"r1":0,"r2":0,"r3":0,"r4":0,"r5":0,"r6":0}
 conditionals = {"<":"jl",">":"jg","==":"je","!=":"jne","<=":"jle",">=":"jge","!":"jz"}
-inverse_conditionals = {"jl":"jge","jg":"jle","je":"jne","jne":"je","jle":"jg","jge":"jl","jz":"jnz","jnz":"jz"}
 temp_regs=[] # List of all regs and memory locations used as temporary registers
-
 
 class Variables:
     def __init__(self):
@@ -172,10 +170,25 @@ class Compiler:
         self.inherit_dict = {}
         self.verbose = False
 
-    def compile(self,verbose=False):       
+    def resetSystem(self):
+        # Called so we can compile with another object and not get mixed up with previous compilation
+        # Clear RAM, reset reg_list and clear temp_regs
+        for a in range(len(RAM)):
+            RAM[a] = 0
+
+        for r in reg_list:
+            reg_list[r]=0
+
+        temp_regs = []
+        
+        self.__init__()
+
+    def compile(self,ctext,verbose=False):  #
+        self.resetSystem()
+        
         print("Starting compile...")
         parser = c_parser.CParser()
-        ast = parser.parse(text, filename='<none>')
+        ast = parser.parse(ctext, filename='<none>')
         
         self.ASMcode=""
         self.FuncASTlist=[] # List of all non-main functions as AST nodes
@@ -351,12 +364,12 @@ class Compiler:
                     
                 cond_label = new_label("cond")
                 
-                self.addASM("mov "+status_reg+",1")
+                self.addASM("mov "+status_reg+",0x01")
                 self.addASM("cmp A,B")
                 condcode = conditionals[op]
                 self.addASM(condcode+" "+cond_label)
                 
-                self.addASM("mov "+status_reg+",0")
+                self.addASM("mov "+status_reg+",0x00")
                 self.addASM(cond_label+":")
 
                 if loadReg!=status_reg:
@@ -457,7 +470,7 @@ class Compiler:
                 
             cond_label = new_label("cond")
             
-            self.addASM("mov "+status_reg+",1")
+            self.addASM("mov "+status_reg+",0x01")
             # We can only CMP with register A
             # Therefore if we are asked to#
 
@@ -468,7 +481,7 @@ class Compiler:
             
             condcode = conditionals[op] # !: jnz
             self.addASM(condcode+" "+cond_label)
-            self.addASM("mov "+status_reg+",0")
+            self.addASM("mov "+status_reg+",0x00")
             self.addASM(cond_label+":")
 
             if loadReg!=status_reg:
@@ -580,28 +593,16 @@ def new_label(labeltext="label",increment=True,no_number=False):
         label=labeltext
     else:
         label = labeltext+str(label_number)
+
+    label=label.replace("_","") # '_' confuses regular expressions used in assembler...
     if increment: label_number+=1
 
     if label not in all_labels: all_labels.append(label)
     else: print("ERROR! Label is not unique:",label)
     return label
 
-label_remap={}
-def curate_labels(labels):
-    label0,label1=labels.split(',')
-   # label0 is going to replace label1
-       
-    label_remap[label1]=label0
-    return label0
-
-def GetRemapLabel(l):
-    while l in label_remap:
-        l = label_remap[l]
-    return l
-
-def OptimiseCode():
-    pass
-text=r"""
+if __name__=="__main__":
+    text=r"""
     int var69=69;
     int hello=world=3;
     int f = 2;
@@ -667,78 +668,13 @@ text=r"""
     #pragma asm("mov %0,%1",c,0x01)
     }
     """
-from optimise_asm import Optimiser
+    import optimise_asm
+    from optimise_asm import Optimiser
+    mycompiler = Compiler()
+    ASMcode = mycompiler.compile(text,verbose=False) 
 
-mycompiler = Compiler()
-ASMcode = mycompiler.compile(verbose=False) 
+    print(ASMcode)
 
-print(ASMcode)
-
-# Optimisation stuff...
-temp_reg_match=""
-for tr in temp_regs:
-    for c in tr:
-        addc=c
-        if c=="[" or c=="]": addc="\\"+c # Add escape characters for memory locations
-        temp_reg_match+=addc
-    temp_reg_match+="|"
-if temp_reg_match: temp_reg_match=temp_reg_match[:-1]
-
-# WHAT IF addresses are 16bit, *h is only 8-bit
-#temp_reg_match=r'r0|\[0x06\]'
-asmOptimiser = Optimiser(pattern_dict = {"*r":"r0|r1|r2|r3|r4|r5","*j":"je|jne|jle|jl|jge|jg|jz|jnz","*m":temp_reg_match,"*J":"jmp|je|jne|jle|jl|jge|jg|jz|jnz"})
-
-# Conditional jumping optimisations
-#asmOptimiser.addPattern(["mov *r,1","cmp A,B","*j *t","mov %0,0","%2:","mov A,%0","cmp A,0x00","jz *t"],["cmp A,B","%1 %3"]) # all registers
-asmOptimiser.addPattern(["mov *m,1","cmp A,B","*j *t","mov %0,0","%2:","mov A,%0","cmp A,0x00","jz *t"],["cmp A,B","%1 %3"]) # temp register storage
-asmOptimiser.addPattern(["mov *m,1","cmp A,B","*j *t","mov %0,0","%2:","mov A,%0","cmp A,0x00","jnz *t"],["cmp A,B","(%1) %3"],process=lambda a:inverse_conditionals[a]) # temp register storage
-
-# Optimise for A = 0xXX + 0xYY
-asmOptimiser.addPattern(["mov A,0x*h","mov B,0x*h","add A,B"],["mov A,(0x%0+0x%1)"],process=lambda a: '0x{:02X}'.format(int(eval(a))&0xff))
-
-# Optimise for: r0 = A, A = r0 + B = A + B
-asmOptimiser.addPattern(["mov *r,A","mov A,*t","mov B,%0","add A,B"],["mov B,%1","add A,B"]) # Kinda assumes that register %0 is not used later on.
-asmOptimiser.addPattern(["mov *m,A","mov A,*t","mov B,%0","add A,B"],["mov B,%1","add A,B"]) # Kinda assumes that register %0 is not used later on.
-
-# Optimise for cmp A directly to literal
-asmOptimiser.addPattern(["mov B,0x*h","cmp A,B"],["cmp A,0x%0"])
-
-# Optimise for inc A
-asmOptimiser.addPattern(["mov B,0x01","add A,B"],["inc A"])
-
-# Optimise for xor A
-asmOptimiser.addPattern(["mov A,0x00"],["xor A"])
-
-# Remove repeated labels
-asmOptimiser.addPattern(["*t:","*t:"],["(%0,%1):"],process=lambda a: curate_labels(a))
-
-# Remove repetition when moving a value into multiple memory locations/registers
-asmOptimiser.addPattern(["mov B,0x*h","mov *t,B","mov A,0x%0","mov *t,A"],["mov A,0x%0","mov %1,A","mov %2,A"])
-
-# For loop optimisation
-asmOptimiser.addPattern(["mov \[0x*t],A","*t:","mov A,\[0x%0]"],["mov [0x%0],A","%1:"]) 
-
-opt_text = asmOptimiser.ApplyAll(ASMcode)
-
-# make list of out of date labels from label_remap and use that to do a search pattern (include jmp)
-remap_jmps = asmOptimiser.addPattern(["*J *t"],["%0 (%1)"],process=lambda a:GetRemapLabel(a)) 
-
-opt_text,updated = asmOptimiser.ApplyOptimisation(opt_text,remap_jmps)
-print(opt_text)
-
-mycompiler.variables.print("main")
-
-# notes on possible optimisations:
-
-# DONE - (1)- if/while conditional logic when only a single level deep - can be substantially optimised4
-# (2) mov B,0xXY
-# cmp A,B -->> cmp A,0xXY
-# DONE - remove multiple labels and track so jumps can be updated
-
-# Per function (OptimiseFunctionsForRegisters):
-#   - What registers are not used in this function?
-#   - What variables (memory) are used most often?
-#   - Sort memory usage and map memory-variables to unused registers
-#   - Note that function modifies registers so should push/pop them (within the function) onto/from the stack.
-
-# asm... use #pragma statements
+    asmOptimiser = Optimiser(temp_regs)
+    asmOptimiser.optimise_code(ASMcode)
+    

@@ -1,0 +1,8 @@
+test:
+
+mov A,0x00
+jz exitwhile2
+
+exitwhile2:
+mov A,0x01
+halt
