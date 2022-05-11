@@ -1,7 +1,7 @@
-import CPU
+import CPUSimulator.CPU as CPU
 import simple_assembler
 from simple_assembler import Assembler
-import define_instructions
+import CPUSimulator.define_instructions
 
 def prettyROM(start,stop):
     for i in range(start,stop):
@@ -15,8 +15,8 @@ if __name__=="__main__":
         
     # *********************** ASSEMBLE CODE *******************************
     print("Assembling code:")
-    asm = Assembler("testASM0.txt",CPU.Memory,"")
-    asm.instruction_str = define_instructions.instruction_str
+    asm = Assembler("testASM3.txt",CPU.Memory,"")
+    asm.instruction_str = CPUSimulator.define_instructions.instruction_str
     success = asm.assemble()
     # *********************** EMULATE CPU *******************************
 

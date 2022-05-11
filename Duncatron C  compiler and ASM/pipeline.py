@@ -1,4 +1,4 @@
-from CPUSimulator.simple_assembler import Assembler
+from simple_assembler import Assembler
 import CPUSimulator.CPU
 import CPUSimulator.define_instructions
 import Duncatron_C_compiler
