@@ -267,6 +267,7 @@ class Compiler:
             return (statement.type,statement.value,"Constant",None,regvalue)
 
         elif node_type=="Assignment":
+            op = statement.op
             lvalue = self.walkAST(statement.lvalue)
             rvalue = self.walkAST(statement.rvalue,"B")
             freeReg("B")
@@ -279,21 +280,47 @@ class Compiler:
 
             if lvalue[2]==None:
                 print("ERROR: Assignment needs a name ID")
-                
-            if rvalue[2]=="Constant": # Then we have a literal value that has been evaluated (and is currently in A), assign to lvalue Name
-                self.addASM("mov ["+formatNumber(address)+"],B\t;'"+assign_name+"'=B")
-            elif rvalue[2]=="BinaryOp": # result is in A register
-                self.addASM("mov ["+formatNumber(address)+"],A\t;'"+assign_name+"'=A")
-            elif rvalue[2]=="ID":
-                Lid_name = lvalue[3]
-                Laddr = self.variables.get_address(self.local_scope,Lid_name)#lvariables[Lid_name][2]
-                Rid_name = rvalue[3]
-                Raddr = self.variables.get_address(self.local_scope,Rid_name)#variables[Rid_name][2]
 
-                self.addASM("mov ["+formatNumber(Laddr)+"],A\t;'"+Lid_name+"'='"+Rid_name+"'")
-                rvalue[2]=="BinaryOp" # If the type is changed here, it means another assignment would use the BinaryOp method above and move directly from A register
-            else:
-                print("ERROR PROBABLY",rvalue[2])
+            if op=="+=" or op=="-=":
+                alu_ins = "add A,B" if op=="+=" else "sub A,B"
+                
+                if rvalue[2]=="Constant": # B holds the constant
+                    self.addASM("mov A,["+formatNumber(address)+"]") # A=variable
+                    self.addASM(alu_ins) #
+                    self.addASM("mov ["+formatNumber(address)+"],A")
+                if rvalue[2]=="BinaryOp": # result is in A register
+                    if op=="+=":
+                        self.addASM("mov B,["+formatNumber(address)+"]") # B=variable
+                        self.addASM("add A,B") # 
+                        self.addASM("mov ["+formatNumber(address)+"],A")
+                    elif op=="-=":
+                        self.addASM("mov B,A") # a contains result from binaryOp - need to minus it off the leftVariable
+                        self.addASM("mov A,["+formatNumber(address)+"]") # A=variable
+                        self.addASM("sub A,B")
+                        self.addASM("mov ["+formatNumber(address)+"],A")
+                        
+                if rvalue[2]=="ID": # ID contents is in B
+                    self.addASM("mov A,["+formatNumber(address)+"]") #
+                    self.addASM(alu_ins) # A=A+B or A=A-B
+                    self.addASM("mov ["+formatNumber(address)+"],A")
+                    
+            if op=="=":  
+                if rvalue[2]=="Constant": # Then we have a literal value that has been evaluated (and is currently in A), assign to lvalue Name
+                    self.addASM("mov ["+formatNumber(address)+"],B\t;'"+assign_name+"'=B")
+                elif rvalue[2]=="BinaryOp": # result is in A register
+                    self.addASM("mov ["+formatNumber(address)+"],A\t;'"+assign_name+"'=A")
+                elif rvalue[2]=="ID":
+                    Lid_name = lvalue[3]
+                    Laddr = self.variables.get_address(self.local_scope,Lid_name)#lvariables[Lid_name][2]
+                    Rid_name = rvalue[3]
+                    Raddr = self.variables.get_address(self.local_scope,Rid_name)#variables[Rid_name][2]
+
+                    self.addASM("mov ["+formatNumber(Laddr)+"],A\t;'"+Lid_name+"'='"+Rid_name+"'")
+                    rvalue[2]=="BinaryOp" # If the type is changed here, it means another assignment would use the BinaryOp method above and move directly from A register
+                else:
+                    print("ERROR PROBABLY",rvalue[2])
+
+                
 
             if var_type!="int":
                 print("ERROR! Unsupported type in assignment",var_type)
@@ -474,7 +501,7 @@ class Compiler:
             # We can only CMP with register A
             # Therefore if we are asked to#
 
-            print("Op=",op)
+            print("Unary Op=",op)
                         
             self.addASM("cmp A,0x00") # I think cmp A,0x00 is not strictly needed for jz and jnz?
             
@@ -552,7 +579,7 @@ class Compiler:
                 return
             #re.match('asm\(".*"\)',a)
         elif node_type=="For":
-            print(statement)
+            #print(statement)
             # init
             # startfor:
             #   test condition
@@ -676,5 +703,6 @@ if __name__=="__main__":
     print(ASMcode)
 
     asmOptimiser = Optimiser(temp_regs)
-    asmOptimiser.optimise_code(ASMcode)
+    opt_code = asmOptimiser.optimise_code(ASMcode)
+    print(opt_code)
     

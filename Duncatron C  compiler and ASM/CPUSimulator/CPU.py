@@ -415,6 +415,22 @@ def UART_out():
     U_reg.databus.set(U_reg.valueHI&0xFF)  # If we put values here, they will go onto databus
     F_reg.value &= 0b11011111 # clear RX_READY flag
 
+def reset(clear_memory=True):    
+    ALU_data = 0
+    ALU_carry = 1
+
+    A_reg.value=0
+    B_reg.value=0
+
+    PC.value=0
+    PC.valueHI=0x00
+
+    F_reg.value = (ALU_carry<<1)
+    I_reg.value = 0x0
+    if clear_memory:
+        for a in range(len(Memory)):
+            Memory[a]=0
+    
 signal_group = [] # This gets populated in sequential order as signals are
 # defined, therefore the signal definition order is important and needs to
 # match the order defined in 'define_instructions.py', as well as matching
@@ -488,17 +504,7 @@ CPU.connect(None, OUTen,0,clear_int,clocklatch=True)
 
 CPU.connect(U_reg,INen,1,UART_out) # Get UART received byte
 
-ALU_data = 0
-ALU_carry = 1
-
-A_reg.value=0
-B_reg.value=0
-
-PC.value=0
-PC.valueHI=0x00
-
-F_reg.value = (ALU_carry<<1)
-I_reg.value = 0x0 
+reset() # Starting positions 
 
 if __name__=="__main__":
     from control_EEPROM0 import control0
@@ -509,22 +515,3 @@ else:
     from .control_EEPROM1 import control1
     from .control_EEPROM2 import control2
 
-##Memory[0x0000]=69
-##Memory[0x8000]=0xFF # nop
-##Memory[0x8001]=0x1c # mov a,0x10
-##Memory[0x8002]=0x10
-##Memory[0x8003]=0x2a # mov b,0x01
-##Memory[0x8004]=0x01
-##Memory[0x8005]=0x80 #add a,b
-##Memory[0x8006]=0xd6 # JMP 0x1234
-##Memory[0x8007]=0x12
-##Memory[0x8008]=0x34
-##
-##Memory[0x1234]=0xd6 # JMP 0x8005
-##Memory[0x1235]=0x80
-##Memory[0x1236]=0x05
-##
-##CPU.displaystate()
-##while True:
-##    CPU.compute()
-##    input(">")

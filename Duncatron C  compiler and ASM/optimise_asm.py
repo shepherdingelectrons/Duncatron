@@ -154,7 +154,9 @@ class Optimiser:
 
         # Optimise for A = 0xXX + 0xYY
         self.addPattern(["mov A,0x*h","mov B,0x*h","add A,B"],["mov A,(0x%0+0x%1)"],process=lambda a: '0x{:02X}'.format(int(eval(a))&0xff))
-
+        # Optimise for A = 0xXX - 0xYY
+        self.addPattern(["mov A,0x*h","mov B,0x*h","sub A,B"],["mov A,(0x%0-0x%1)"],process=lambda a: '0x{:02X}'.format(int(eval(a))&0xff))
+       
         # Optimise for: r0 = A, A = r0 + B = A + B
         self.addPattern(["mov *r,A","mov A,*t","mov B,%0","add A,B"],["mov B,%1","add A,B"]) # Kinda assumes that register %0 is not used later on.
         self.addPattern(["mov *m,A","mov A,*t","mov B,%0","add A,B"],["mov B,%1","add A,B"]) # Kinda assumes that register %0 is not used later on.
@@ -164,6 +166,9 @@ class Optimiser:
 
         # Optimise for inc A
         self.addPattern(["mov B,0x01","add A,B"],["inc A"])
+
+        # Optimise for dec A
+        self.addPattern(["mov B,0x01","sub A,B"],["dec A"])
 
 ##        # Optimise for xor A
 ##        self.addPattern(["mov A,0x00"],["xor A"])

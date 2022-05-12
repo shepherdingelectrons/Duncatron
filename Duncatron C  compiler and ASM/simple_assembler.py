@@ -1,4 +1,5 @@
 import re
+import CPUSimulator.define_instructions
 
 class Assembler:
     ADDRESS_DEFINITION = 256
@@ -10,7 +11,7 @@ class Assembler:
     def __init__(self,filename,memory,text):
         self.lines = []
         self.memory = memory
-        self.instruction_str = ""
+        self.instruction_str = CPUSimulator.define_instructions.instruction_str
         if filename!=None:
             self.read_and_clean_file(filename)
         else:
@@ -236,11 +237,8 @@ class Assembler:
         
 if __name__=="__main__":
     #from .define_instructions import define_instructions
-    import define_instructions
     memory = bytearray(0x10000)
     asm = Assembler("testasm3.txt",memory,"")
-    asm.instruction_str = define_instructions.instruction_str
-
     success = asm.assemble()
     if success:
         print("Assembling successful")
