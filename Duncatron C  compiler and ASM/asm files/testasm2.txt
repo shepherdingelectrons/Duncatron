@@ -1,0 +1,48 @@
+optimised_main:
+mov A,0x41
+mov [0x00],A
+mov A,0x01
+mov [0x01],A
+enterwhile1:
+mov A,0x5B
+mov B,[0x00]
+cmp A,B
+jl exitwhile1
+mov A,[0x00]
+mov U,A
+mov B,[0x01]
+mov A,[0x00]
+add A,B
+mov [0x00],A
+jmp enterwhile1
+exitwhile1:
+mov B,0x41
+mov [0x00],B
+enterwhile3:
+mov A,[0x00]
+cmp A,0x5A
+jl exitwhile3
+mov A,[0x00]
+mov U,A
+mov B,[0x01]
+mov A,[0x00]
+add A,B
+mov [0x00],A
+jmp enterwhile3
+exitwhile3:
+mov A,0x5A
+mov [0x00],A
+startFor5:
+cmp A,0x41
+jl endFor5
+mov A,[0x00]
+mov U,A
+mov B,0x01
+mov A,[0x00]
+sub A,B
+mov [0x00],A
+jmp startFor5
+endFor5:
+mov U,0x0A
+mov U,0x0D
+halt

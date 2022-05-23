@@ -21,6 +21,8 @@ class Assembler:
         self.labels = {} # Dictionary of labels and their memory addresses
         self.labelref = []
 
+        self.lookupASM = []
+
     def read_and_clean_text(self,text):
         for line in text.split("\n"):
             if ";" in line:
@@ -159,6 +161,8 @@ class Assembler:
             # hex matching on numbers and generate call/jmp regex for text?
             self.asmregex.append((regex,machine_code))
 
+            self.lookupASM.append(opcode) # useful for debug purposes
+
         self.asmregex.append(("^0x([0-9]{4}):$",self.ADDRESS_DEFINITION))
         self.asmregex.append(("^(.*):$",self.LABEL_DEFINITION))
 
@@ -234,7 +238,7 @@ class Assembler:
         else:
             cleaned = opcode
         return cleaned
-        
+
 if __name__=="__main__":
     #from .define_instructions import define_instructions
     memory = bytearray(0x10000)

@@ -146,11 +146,8 @@ class Optimiser:
 
     def optimise_code(self, ASMcode):
         # Conditional jumping optimisations
-        #asmOptimiser.addPattern(["mov *r,1","cmp A,B","*j *t","mov %0,0","%2:","mov A,%0","cmp A,0x00","jz *t"],["cmp A,B","%1 %3"]) # all registers
-        self.addPattern(["mov *m,0x01","cmp A,B","*j *t","mov %0,0x00","%2:","mov A,%0","cmp A,0x00","jz *t"],["cmp A,B","%1 %3"]) # temp register storage
-
         inverse_conditionals = {"jl":"jge","jg":"jle","je":"jne","jne":"je","jle":"jg","jge":"jl","jz":"jnz","jnz":"jz"}
-        self.addPattern(["mov *m,0x01","cmp A,B","*j *t","mov %0,0x00","%2:","mov A,%0","cmp A,0x00","jnz *t"],["cmp A,B","(%1) %3"],process=lambda a:inverse_conditionals[a]) # temp register storage
+        self.addPattern(["mov *m,0x01","cmp A,B","*j *t","mov %0,0x00","%2:","mov A,%0","cmp A,0x00","jz *t"],["cmp A,B","(%1) %3"],process=lambda a:inverse_conditionals[a]) # temp register storage
 
         # Optimise for A = 0xXX + 0xYY
         self.addPattern(["mov A,0x*h","mov B,0x*h","add A,B"],["mov A,(0x%0+0x%1)"],process=lambda a: '0x{:02X}'.format(int(eval(a))&0xff))

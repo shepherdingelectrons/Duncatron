@@ -343,7 +343,7 @@ class Compiler:
                 returnRegContents=True
             if leftNode=="UnaryOp" and rightNode=="BinaryOp":
                 # Means we need to put result in free register
-                leftReg=getReg()            
+                leftReg=getReg()
             if leftNode=="UnaryOp" and rightNode=="UnaryOp":
                 leftReg=getReg()
                 rightReg="A"
@@ -361,6 +361,11 @@ class Compiler:
             
             if leftReg!="A":
                 #self.ASMcode+="mov B,"+leftReg+"\n"
+                invert_cond = {"<":">=","<=":">",">":"<=",">=":"<"}
+                                                              
+                if op in invert_cond: # means that we need to make sure leftReg is in A reg and rightReg is definitely in B reg
+                    op = invert_cond[op]
+                    
                 self.addASM("mov B,"+leftReg)
                 #if leftNode=="UnaryOp":
                 freeReg(leftReg) # oops we don't know the difference between a temp memory_reg and a variable. It's okay, freeReg will ignore if a variable
@@ -392,8 +397,17 @@ class Compiler:
                 cond_label = new_label("cond")
                 
                 self.addASM("mov "+status_reg+",0x01")
-                self.addASM("cmp A,B")
-                condcode = conditionals[op]
+                self.addASM("cmp A,B") # The order of A and B matters for some conditionals (but not all).
+                # i.e.
+                # mov A,0x0A
+                # mov B,[0x00]
+                # cmp A,B
+                # jl/jle/jg/jge label0 ; jump behaviour is inverted if A and B are swapped
+                #
+                # alternatively:
+                # je/jne/jz/jnz label0 ; jump behaviour is the same if A and B are swapped
+                
+                condcode = conditionals[op] # if we have swapped A and B, then need to record that and use inverse conditional here
                 self.addASM(condcode+" "+cond_label)
                 
                 self.addASM("mov "+status_reg+",0x00")
@@ -596,7 +610,7 @@ class Compiler:
             cond = self.walkAST(statement.cond)
 
             self.addASM("cmp A,0x00")
-            self.addASM("jnz "+endfor)
+            self.addASM("jz "+endfor)
             
             for s in statement.stmt:
                 self.walkAST(s)

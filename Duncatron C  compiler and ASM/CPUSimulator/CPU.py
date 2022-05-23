@@ -195,8 +195,8 @@ class ControlLogic():
               "r0=",r0.value,"r1=",r1.value,"r2=",r2.value,"r3=",r3.value,"r4=",r4.value,"r5=",r5.value,"U=",U_reg.value,"SP=",hex(SP.valueHI<<8|SP.value))
         SP_value=SP.valueHI<<8|SP.value
 ##        if SP_value>0:
-        for i in range(0xfffA,0xFFFF+1):
-            print("Stack["+str(i)+"]="+str(Memory[i]))
+##        for i in range(0xfffA,0xFFFF+1):
+##            print("Stack["+str(i)+"]="+str(Memory[i]))
 
     def set_controls(self, verbose=False):
         # FLAGS: x x RX_READY TX_SENDING x N C Z
@@ -425,8 +425,17 @@ def reset(clear_memory=True):
     PC.value=0
     PC.valueHI=0x00
 
+    SP.value=0
+    SP.valueHI=0
+
+    U_reg.value=-1
+
     F_reg.value = (ALU_carry<<1)
     I_reg.value = 0x0
+
+    for signal in signal_group:
+        signal.unset()
+    
     if clear_memory:
         for a in range(len(Memory)):
             Memory[a]=0

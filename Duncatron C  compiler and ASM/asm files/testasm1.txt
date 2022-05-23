@@ -1,0 +1,125 @@
+jmp optimised_main
+main:
+mov A,0x41
+mov [0x00],A	;'c'=A
+mov A,0x01
+mov [0x01],A	;'d'=A
+enterwhile1:
+mov A,0x41
+mov B,0x1A
+add A,B
+mov B,[0x00]
+mov r0,0x01
+cmp A,B
+jl cond2
+mov r0,0x00
+cond2:
+mov A,r0
+cmp A,0x00
+jz exitwhile1
+mov A,[0x00]
+mov U,A
+mov B,[0x01]
+mov A,[0x00]
+add A,B
+mov [0x00],A
+jmp enterwhile1
+exitwhile1:
+mov B,0x41
+mov [0x00],B	;'c'=B
+enterwhile3:
+mov A,[0x00]
+mov B,0x5A
+mov r0,0x01
+cmp A,B
+jl cond4
+mov r0,0x00
+cond4:
+mov A,r0
+cmp A,0x00
+jz exitwhile3
+mov A,[0x00]
+mov U,A
+mov B,[0x01]
+mov A,[0x00]
+add A,B
+mov [0x00],A
+jmp enterwhile3
+exitwhile3:
+mov A,0x41
+mov B,0x1A
+add A,B
+mov B,0x01
+sub A,B
+mov [0x00],A	;'c'=A
+startFor5:
+mov A,[0x00]
+mov B,0x41
+mov r0,0x01
+cmp A,B
+jge cond6
+mov r0,0x00
+cond6:
+mov A,r0
+cmp A,0x00
+jnz endFor5
+mov A,[0x00]
+mov U,A
+mov B,0x01
+mov A,[0x00]
+sub A,B
+mov [0x00],A
+jmp startFor5
+endFor5:
+mov U,0x0A
+mov U,0x0D
+halt
+
+optimised_main:
+mov A,0x41
+mov [0x00],A
+mov A,0x01
+mov [0x01],A
+enterwhile1:
+mov A,0x5B
+mov B,[0x00]
+cmp A,B
+jl exitwhile1
+mov A,[0x00]
+mov U,A
+mov B,[0x01]
+mov A,[0x00]
+add A,B
+mov [0x00],A
+jmp enterwhile1
+exitwhile1:
+mov B,0x41
+mov [0x00],B
+enterwhile3:
+mov A,[0x00]
+cmp A,0x5A
+jl exitwhile3
+mov A,[0x00]
+mov U,A
+mov B,[0x01]
+mov A,[0x00]
+add A,B
+mov [0x00],A
+jmp enterwhile3
+exitwhile3:
+mov A,0x5A
+mov [0x00],A
+startFor5:
+cmp A,0x41
+jl endFor5
+mov A,[0x00]
+mov U,A
+mov B,0x01
+mov A,[0x00]
+sub A,B
+mov [0x00],A
+jmp startFor5
+endFor5:
+mov U,0x0A
+mov U,0x0D
+halt

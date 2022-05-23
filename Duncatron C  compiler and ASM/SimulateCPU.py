@@ -1,7 +1,7 @@
 import CPUSimulator.CPU as CPU
 import simple_assembler
 from simple_assembler import Assembler
-import CPUSimulator.define_instructions
+#import CPUSimulator.define_instructions
 
 def prettyROM(start,stop):
     for i in range(start,stop):
@@ -15,8 +15,8 @@ if __name__=="__main__":
         
     # *********************** ASSEMBLE CODE *******************************
     print("Assembling code:")
-    asm = Assembler("testASM3.txt",CPU.Memory,"")
-    asm.instruction_str = CPUSimulator.define_instructions.instruction_str
+    asm = Assembler("asm files\\testasm2.txt",CPU.Memory,"")
+    #asm.instruction_str = CPUSimulator.define_instructions.instruction_str
     success = asm.assemble()
     # *********************** EMULATE CPU *******************************
 
@@ -25,7 +25,7 @@ if __name__=="__main__":
         current_pos = 0
         
         print("Emulating CPU:")
-        debug=0
+        debug=True
         prevR3 = -1
 
         # Fill a buffer and then 
@@ -34,15 +34,17 @@ if __name__=="__main__":
         uartRX += "A"*100+"\bB" +chr(13)
         
         while not CPU.HALT.isactive(None):
-            if debug: print("Loaded instruction:",assembler.lookupASM(CPU.I_reg.value))
 
-            CPU.CPU.compute(verbose=debug)
+             
+            CPU.CPU.compute(verbose=(( CPU.CPU.microcode_counter==1) and debug))
             
             if CPU.U_reg.value!=-1: # Bit of a hack
                 print(chr(CPU.U_reg.value), end='')
                 CPU.U_reg.value=-1
 
-            if debug: input(">") # Wait for keypress between clock cycles
+            if debug and CPU.CPU.microcode_counter==2:
+                print("Loaded instruction:",asm.lookupASM[CPU.I_reg.value])
+                input(">") # Wait for keypress between clock cycles
             
             # 7 6    5        4    3 2 1 0
             # X X RX_READY SENDING X N C Z
