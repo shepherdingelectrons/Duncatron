@@ -25,7 +25,7 @@ if __name__=="__main__":
         current_pos = 0
         
         print("Emulating CPU:")
-        debug=True
+        debug=False
         prevR3 = -1
 
         # Fill a buffer and then 

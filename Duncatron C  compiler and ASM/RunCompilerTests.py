@@ -54,16 +54,25 @@ class TestPipeline:
         decor = "*"*21
         banner= decor + " Pipeline test summary "+decor
         print("\n\n"+banner)
+
+        total_std_err = 0
+        total_opt_err = 0
         
         for file in error_log:
             std_err, opt_err = error_log[file]
             std_err_str = "PASS" if std_err else "FAIL"
             opt_err_str = "PASS" if opt_err else "FAIL"
 
+            if not std_err: total_std_err+=1
+            if not opt_err: total_opt_err+=1
+
             file = file.split('\\')[-1]
             error_str = file+";\t standard ASM:"+std_err_str+", optimised ASM:"+opt_err_str
             print(error_str)
-        print("*"*len(banner)+"\n\n")
+        print("*"*len(banner)+"\n")
+        final_status = "PASS" if (total_std_err+total_opt_err)==0 else "FAIL"
+        print("Total errors:"+str(total_std_err+total_opt_err)+". Overall status: "+final_status)
+        print("\n")
         input("PRESS ENTER TO EXIT")
 
     def queryUser(self,prompt,filehandle,output):
@@ -114,7 +123,6 @@ class TestPipeline:
         ASMcode = mycompiler.compile(text,verbose=False)
         std_output = self.AssembleAndSimulate(ASMcode)
         standard_error = self.handleOutput(filename,std_output)
-        print("STD:",standard_error)
  
         asmOptimiser = Optimiser(Duncatron_C_compiler.temp_regs)
         optimised_ASMcode = asmOptimiser.optimise_code(ASMcode)
@@ -132,7 +140,7 @@ class TestPipeline:
         CPU.reset() # wipes memory (by default) and restores state
         asm = Assembler(None,CPU.Memory,asm_text) # We pass on the CPU Memory so that
         # the machine code can be put into it for simulation
-
+        
         if asm.assemble():
             print("Simulating...")
             uart_out=""

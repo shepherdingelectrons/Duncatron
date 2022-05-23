@@ -180,6 +180,11 @@ class Compiler:
             reg_list[r]=0
 
         temp_regs = []
+
+        global label_number, all_labels
+
+        label_number=0
+        all_labels = []
         
         self.__init__()
 
@@ -501,37 +506,46 @@ class Compiler:
             
         elif node_type=="UnaryOp":
             if self.verbose: print(statement)
-            self.walkAST(statement.expr,loadReg="A")#loadReg) # i.e.
+            details = self.walkAST(statement.expr,loadReg="A")#loadReg) # i.e.
             op = statement.op
                
             if loadReg=="A" or loadReg==None:
                 status_reg = getReg() # we will use a new register - when is this freed...?
             else:
                 status_reg = loadReg # we can put result straight in report register
+
+            if op in conditionals:
+                cond_label = new_label("cond")
                 
-            cond_label = new_label("cond")
-            
-            self.addASM("mov "+status_reg+",0x01")
-            # We can only CMP with register A
-            # Therefore if we are asked to#
+                self.addASM("mov "+status_reg+",0x01")
+                # We can only CMP with register A
+                # Therefore if we are asked to#
 
-            print("Unary Op=",op)
-                        
-            self.addASM("cmp A,0x00") # I think cmp A,0x00 is not strictly needed for jz and jnz?
-            
-            
-            condcode = conditionals[op] # !: jnz
-            self.addASM(condcode+" "+cond_label)
-            self.addASM("mov "+status_reg+",0x00")
-            self.addASM(cond_label+":")
+                print("Unary Op=",op)
+                            
+                self.addASM("cmp A,0x00") # I think cmp A,0x00 is not strictly needed for jz and jnz?          
+                
+                condcode = conditionals[op] # !: jnz
+                self.addASM(condcode+" "+cond_label)
+                self.addASM("mov "+status_reg+",0x00")
+                self.addASM(cond_label+":")
 
-            if loadReg!=status_reg:
-               self.addASM("mov "+loadReg+","+status_reg)
-               freeReg(status_reg)
-            loadReg = None
-            
-            return ('int',None,"BinaryOp",None) # I think it's okay to return type as BinaryOp...
-            
+                if loadReg!=status_reg:
+                   self.addASM("mov "+loadReg+","+status_reg)
+                   freeReg(status_reg)
+                loadReg = None
+                
+                return ('int',None,"BinaryOp",None) # I think it's okay to return type as BinaryOp...
+            elif op=="p++":
+                self.addASM("inc A")
+                # we need to return A to the
+                self.addASM("mov "+details[4]+",A")
+            elif op=="p--":
+                self.addASM("dec A")
+                self.addASM("mov "+details[4]+",A")
+            else:
+                print("Unsupported UnaryOp:",op)
+                            
         elif node_type=="If":
             iftrue = new_label("ifTrue",increment=False)
             iffalse = new_label("ifFalse",increment=False)

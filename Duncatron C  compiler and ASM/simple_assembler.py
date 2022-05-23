@@ -22,7 +22,7 @@ class Assembler:
         self.labelref = []
 
         self.lookupASM = []
-
+     
     def read_and_clean_text(self,text):
         for line in text.split("\n"):
             if ";" in line:

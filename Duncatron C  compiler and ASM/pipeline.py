@@ -7,47 +7,17 @@ import CPUSimulator.CPU as CPU
 text=r"""   
     void main()
     {
-       int c=65,d=1;
+        int i,j;
  
-
-        while(c<65+26-1)
+        for (i=0;i<10;i++)
         {
-       #pragma asm("mov A,%0",c)
-       #pragma asm("mov U,A")
-       c+=d;
-       }
-       #pragma asm("mov U,0x0A")
-       #pragma asm("mov U,0x0D")
-
-       #pragma asm("mov U,0x46")
-       #pragma asm("mov U,0x46")
-       #pragma asm("mov U,0x46")
-    #pragma asm("mov U,0x0A")
-       #pragma asm("mov U,0x0D")
-        c=65;
-       while(c<=90)
-        {
-       #pragma asm("mov A,%0",c)
-       #pragma asm("mov U,A")
-       c+=d;
-       }
-       #pragma asm("mov U,0x0A")
-       #pragma asm("mov U,0x0D")
-
-       #pragma asm("mov U,0x47")
-       #pragma asm("mov U,0x47")
-       #pragma asm("mov U,0x47")
-    #pragma asm("mov U,0x0A")
-       #pragma asm("mov U,0x0D")
-        c=90;
-        for (c=65+26-1;c>=65;c-=1)
-        {
-        #pragma asm("mov A,%0",c)
-        #pragma asm("mov U,A")
+        #pragma asm("mov U,0x46")
         }
-       
-    #pragma asm("mov U,0x0A")
-       #pragma asm("mov U,0x0D")
+
+        for (j=10;j>0;j--)
+        {
+        #pragma asm("mov U,0x47")
+        }
     }
     """
 

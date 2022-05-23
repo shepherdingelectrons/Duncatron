@@ -33,7 +33,7 @@
     #pragma asm("mov U,0x0A")
        #pragma asm("mov U,0x0D")
         c=90;
-        for (c=65+26;c>=65;c-=1)
+        for (c=65+26-1;c>=65;c-=1)
         {
         #pragma asm("mov A,%0",c)
         #pragma asm("mov U,A")

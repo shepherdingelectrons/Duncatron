@@ -1,0 +1,14 @@
+    void main()
+    {
+        int i,j;
+ 
+        for (i=0;i<10;i++)
+        {
+        #pragma asm("mov U,0x46")
+        }
+
+        for (j=10;j>0;j--)
+        {
+        #pragma asm("mov U,0x47")
+        }
+    }
