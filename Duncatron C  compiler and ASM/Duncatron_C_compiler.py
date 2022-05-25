@@ -26,7 +26,7 @@ nodeASM = {"TypeDecl":"mov A,%0\nmov [%1],A\t;%2=%0\n",
            "AssignAFromLit":"mov A,%0\n",
            "AssignAFromMem":"mov A,[%0]\n"}
 
-reg_list={"r0":0,"r1":0,"r2":0,"r3":0,"r4":0,"r5":0,"r6":0}
+reg_list={"r0":0,"r1":0,"r2":0,"r3":0,"r4":0,"r5":0}
 conditionals = {"<":"jl",">":"jg","==":"je","!=":"jne","<=":"jle",">=":"jge","!":"jz"}
 temp_regs=[] # List of all regs and memory locations used as temporary registers
 
@@ -351,7 +351,7 @@ class Compiler:
                 leftReg=getReg()
             if leftNode=="UnaryOp" and rightNode=="UnaryOp":
                 leftReg=getReg()
-                rightReg="A"
+                rightReg="A"               
                 
             if leftNode=="BinaryOp" and rightNode=="BinaryOp": # There is another condition..?
                 leftReg=getReg() # Get anything but A or B reg
@@ -363,16 +363,14 @@ class Compiler:
             right = self.walkAST(statement.right,rightReg)
             
             if returnRegContents: leftReg = left[4] # return regvalue
-            
+
             if leftReg!="A":
                 #self.ASMcode+="mov B,"+leftReg+"\n"
-                invert_cond = {"<":">=","<=":">",">":"<=",">=":"<"}
-                                                              
-                if op in invert_cond: # means that we need to make sure leftReg is in A reg and rightReg is definitely in B reg
-                    op = invert_cond[op]
-                    
+                invert_cond = {"<":">","<=":">=",">":"<",">=":"<="}
+                if op in invert_cond: # we are being asked to evaluate a conditional statement as a binary operation (i.e. if (a<10) or while (a<10)
+                    op = invert_cond[op] # the way the logic works here is opposite to
+
                 self.addASM("mov B,"+leftReg)
-                #if leftNode=="UnaryOp":
                 freeReg(leftReg) # oops we don't know the difference between a temp memory_reg and a variable. It's okay, freeReg will ignore if a variable
             freeReg(rightReg)
 
@@ -488,6 +486,16 @@ class Compiler:
             var_type=self.walkAST(statement.type)[0]
             return ((args,var_type),"FuncDecl")
 
+        elif node_type=="DoWhile":
+            label0 = new_label("enter_dowhile",increment=False)
+            self.addASM(label0+":")
+            for s in statement.stmt:
+                self.walkAST(s)
+
+            self.walkAST(statement.cond,loadReg="A") # if conditional is TRUE, A = 0x01
+            self.addASM("cmp A,0x00")
+            self.addASM("jnz "+label0)
+            
         elif node_type=="While":
             
             label0 = new_label("enter_while",increment=False)
@@ -506,33 +514,35 @@ class Compiler:
             
         elif node_type=="UnaryOp":
             if self.verbose: print(statement)
-            details = self.walkAST(statement.expr,loadReg="A")#loadReg) # i.e.
+
+            unaryReg = "A"
+            if loadReg!=None: unaryReg=loadReg
+            details = self.walkAST(statement.expr,unaryReg) # i.e.
             op = statement.op
                
             if loadReg=="A" or loadReg==None:
                 status_reg = getReg() # we will use a new register - when is this freed...?
             else:
                 status_reg = loadReg # we can put result straight in report register
+                if loadReg!=None and (op=="p++" or op=="p--"):
+                    self.addASM("push A")
+                    self.addASM("mov A,"+loadReg)
 
             if op in conditionals:
                 cond_label = new_label("cond")
                 
                 self.addASM("mov "+status_reg+",0x01")
                 # We can only CMP with register A
-                # Therefore if we are asked to#
-
-                print("Unary Op=",op)
-                            
                 self.addASM("cmp A,0x00") # I think cmp A,0x00 is not strictly needed for jz and jnz?          
                 
                 condcode = conditionals[op] # !: jnz
                 self.addASM(condcode+" "+cond_label)
                 self.addASM("mov "+status_reg+",0x00")
                 self.addASM(cond_label+":")
-
+                
                 if loadReg!=status_reg:
-                   self.addASM("mov "+loadReg+","+status_reg)
-                   freeReg(status_reg)
+                    self.addASM("mov "+loadReg+","+status_reg)
+                    freeReg(status_reg)
                 loadReg = None
                 
                 return ('int',None,"BinaryOp",None) # I think it's okay to return type as BinaryOp...
@@ -540,11 +550,18 @@ class Compiler:
                 self.addASM("inc A")
                 # we need to return A to the
                 self.addASM("mov "+details[4]+",A")
+                if loadReg!="A" and loadReg!=None:                    
+                    self.addASM("mov "+loadReg+",A")
+                    self.addASM("pop A")
             elif op=="p--":
                 self.addASM("dec A")
                 self.addASM("mov "+details[4]+",A")
+                if loadReg!="A" and loadReg!=None:
+                    self.addASM("mov "+loadReg+",A")
             else:
                 print("Unsupported UnaryOp:",op)
+
+            return details
                             
         elif node_type=="If":
             iftrue = new_label("ifTrue",increment=False)

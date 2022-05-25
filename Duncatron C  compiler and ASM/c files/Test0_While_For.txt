@@ -3,7 +3,7 @@
        int c=65,d=1;
  
 
-        while(c<65+26-1)
+        while(c<=65+26-1)
         {
        #pragma asm("mov A,%0",c)
        #pragma asm("mov U,A")
