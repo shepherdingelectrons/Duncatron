@@ -148,6 +148,7 @@ class Optimiser:
         # Conditional jumping optimisations
         inverse_conditionals = {"jl":"jge","jg":"jle","je":"jne","jne":"je","jle":"jg","jge":"jl","jz":"jnz","jnz":"jz"}
         self.addPattern(["mov *m,0x01","cmp A,B","*j *t","mov %0,0x00","%2:","mov A,%0","cmp A,0x00","jz *t"],["cmp A,B","(%1) %3"],process=lambda a:inverse_conditionals[a]) # temp register storage
+        self.addPattern(["mov *m,0x01","cmp A,B","*j *t","mov %0,0x00","%2:","mov A,%0","cmp A,0x00","jnz *t"],["cmp A,B","(%1) %3"],process=lambda a:inverse_conditionals[a]) # temp register storage
 
         # Optimise for A = 0xXX + 0xYY
         self.addPattern(["mov A,0x*h","mov B,0x*h","add A,B"],["mov A,(0x%0+0x%1)"],process=lambda a: '0x{:02X}'.format(int(eval(a))&0xff))
@@ -218,14 +219,17 @@ def GetRemapLabel(l):
 
 
 if __name__  == "__main__":
-    asmOptimiser = Optimiser(pattern_dict = {"*r":"r0|r1|r2|r10","*j":"je|jne|jle|jl|jge|jg|jz|jnz"})
+    temp_regs = ["r0","r1","r2","r3","r4","r5"]
+    asmOptimiser = Optimiser(temp_regs)
 
-    asmOptimiser.addPattern(["mov *r,1","cmp A,B","*j *t","mov %0,0","%2:","mov A,%0","cmp A,0x00","jz *t"],["cmp A,B","%1 %3"])
-    asmOptimiser.addPattern(["mov B,0x*h","cmp A,B"],["cmp A,0x%0"])
-    asmOptimiser.addPattern(["mov A,0x*h","mov B,0x*h","add A,B"],["mov A,(0x%0+0x%1)"],process=lambda a: '0x{:02X}'.format(int(eval(a))))
-    asmOptimiser.addPattern(["mov B,0x*h","mov *t,B","mov A,0x%0","mov *t,A"],["mov A,0x%0","mov %1,A","mov %2,A"])
+    asmOptimiser.addPattern(["mov *r,0x01","cmp A,B","*j *t","mov %0,0x00","%2:","mov A,%0","cmp A,0x00","jnz *t"],["cmp A,B","%1 %3"])
+##    asmOptimiser.addPattern(["mov B,0x*h","cmp A,B"],["cmp A,0x%0"])
+##    asmOptimiser.addPattern(["mov A,0x*h","mov B,0x*h","add A,B"],["mov A,(0x%0+0x%1)"],process=lambda a: '0x{:02X}'.format(int(eval(a))))
+##    asmOptimiser.addPattern(["mov B,0x*h","mov *t,B","mov A,0x%0","mov *t,A"],["mov A,0x%0","mov %1,A","mov %2,A"])
 
-    orig_text = "mov B,0x42\nmov [0x23],B\nmov A,0x42\nmov [0x24],A\nmov A,0x10\nmov B,0x01\nadd A,B\nblah\nmov r0,1\ncmp A,B\nje cond8\nmov r0,0\ncond8:\nmov A,r0\ncmp A,0x00\njz ifFalse7\nblah\nmov B,0x12\ncmp A,B\nblah\nbra"
+    orig_text = "mov [0x01],B\nenterdowhile10:\nmov U,0x41\nmov A,[0x01]\ninc A\nmov [0x01],A\nmov B,0x19\nmov r3,0x01\ncmp A,B\njl cond10\nmov r3,0x00\ncond10:\nmov A,r3\ncmp A,0x00\njnz enterdowhile10\nmov A,[0x01]\nmov B,0x41\nadd A,B"
+
+##    "mov B,0x42\nmov [0x23],B\nmov A,0x42\nmov [0x24],A\nmov A,0x10\nmov B,0x01\nadd A,B\nblah\nmov r0,1\ncmp A,B\nje cond8\nmov r0,0\ncond8:\nmov A,r0\ncmp A,0x00\njz ifFalse7\nblah\nmov B,0x12\ncmp A,B\nblah\nbra"
     opt_text=asmOptimiser.ApplyAll(orig_text)
        
     print("***** BEFORE ******")

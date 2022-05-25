@@ -59,7 +59,7 @@ class TestPipeline:
         total_opt_err = 0
         
         for file in error_log:
-            std_err, opt_err = error_log[file]
+            std_err, opt_err,ASMlines,opt_ASMlines = error_log[file]
             std_err_str = "PASS" if std_err else "FAIL"
             opt_err_str = "PASS" if opt_err else "FAIL"
 
@@ -67,7 +67,7 @@ class TestPipeline:
             if not opt_err: total_opt_err+=1
 
             file = file.split('\\')[-1]
-            error_str = file+";\t standard ASM:"+std_err_str+", optimised ASM:"+opt_err_str
+            error_str = file+";\t std ASM ("+str(ASMlines)+" lines):"+std_err_str+", opt ASM ("+str(opt_ASMlines)+" lines):"+opt_err_str
             print(error_str)
         print("*"*len(banner)+"\n")
         final_status = "PASS" if (total_std_err+total_opt_err)==0 else "FAIL"
@@ -128,13 +128,16 @@ class TestPipeline:
         optimised_ASMcode = asmOptimiser.optimise_code(ASMcode)
         opt_output = self.AssembleAndSimulate(ASMcode)
 
+        ASMlines = ASMcode.count('\n')
+        opt_ASMlines =optimised_ASMcode.count('\n')
+        
         if std_output!=opt_output:
             print("Error: optimised-asm CPU output is different to standard-asm CPU output")
             optimised_error = False
         else:
-            print("Optimised assembly matches standard assembly output: PASS")
+            print("Optimised assembly matches standard assembly output ("+str(opt_ASMlines)+"/"+str(ASMlines)+"): PASS")
 
-        return (standard_error,optimised_error)
+        return (standard_error,optimised_error,ASMlines,opt_ASMlines)
 
     def AssembleAndSimulate(self,asm_text):
         CPU.reset() # wipes memory (by default) and restores state
