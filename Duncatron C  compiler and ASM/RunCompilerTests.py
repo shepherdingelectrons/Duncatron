@@ -126,7 +126,7 @@ class TestPipeline:
  
         asmOptimiser = Optimiser(Duncatron_C_compiler.temp_regs)
         optimised_ASMcode = asmOptimiser.optimise_code(ASMcode)
-        opt_output = self.AssembleAndSimulate(ASMcode)
+        opt_output = self.AssembleAndSimulate(optimised_ASMcode)
 
         ASMlines = ASMcode.count('\n')
         opt_ASMlines =optimised_ASMcode.count('\n')
@@ -134,6 +134,8 @@ class TestPipeline:
         if std_output!=opt_output:
             print("Error: optimised-asm CPU output is different to standard-asm CPU output")
             optimised_error = False
+            print(std_output)
+            print(opt_output)
         else:
             print("Optimised assembly matches standard assembly output ("+str(opt_ASMlines)+"/"+str(ASMlines)+"): PASS")
 

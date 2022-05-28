@@ -107,7 +107,8 @@ def freeReg(reg,size=1): # ADD CODE TO ALSO FREE MEMORY LOCATIONS...
     if reg in reg_list:
         reg_list[reg]=0
     elif reg!="A" and reg!="B":
-        addr_str = reg[1:-1]        
+        addr_str = reg[1:-1]
+        if len(addr_str)==2: return
         #print(reg,addr_str)
         addr = int(addr_str,base=16)
     
@@ -356,6 +357,15 @@ class Compiler:
             if leftNode=="BinaryOp" and rightNode=="BinaryOp": # There is another condition..?
                 leftReg=getReg() # Get anything but A or B reg
 
+            invert_cond = {"<":">","<=":">=",">":"<",">=":"<="}
+            
+##            if leftNode!="UnaryOp" and rightNode=="UnaryOp":# and op in invert_cond: #
+##                op = invert_cond[op]
+##                temp_statement = statement.right
+##                statement.right = statement.left
+##                statement.left = temp_statement
+                
+           
 ##            if silent: # Implemented to optimise For loops
 ##                leftReg=None
              # type, value, node_type,var_name/None
@@ -366,7 +376,6 @@ class Compiler:
 
             if leftReg!="A":
                 #self.ASMcode+="mov B,"+leftReg+"\n"
-                invert_cond = {"<":">","<=":">=",">":"<",">=":"<="}
                 if op in invert_cond: # we are being asked to evaluate a conditional statement as a binary operation (i.e. if (a<10) or while (a<10)
                     op = invert_cond[op] # the way the logic works here is opposite to
 

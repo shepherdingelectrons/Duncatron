@@ -9,8 +9,9 @@ class Optimiser:
         self.patterns=[]
         self.replacements=[]
         self.processes=[]
+        self.shoutouts=[]
 
-    def addPattern(self, pattern,replacement,process=None):
+    def addPattern(self, pattern,replacement,process=None,shoutout=False):
         regex_pattern = []
         for p in pattern:   # go through pattern line-by-line (list)
             regex_p = self.getRegex(p)
@@ -19,6 +20,7 @@ class Optimiser:
         self.patterns.append(regex_pattern)
         self.replacements.append(replacement)
         self.processes.append(process)
+        self.shoutouts.append(shoutout)
         
         return len(self.patterns)-1 # could be used as an index ID
     
@@ -39,12 +41,14 @@ class Optimiser:
         string="^"+string+"$"
         return string
 
-    def subParameters(self, original, parameter_list):
+    def subParameters(self, original, parameter_list,removeEscapes=False):
          # replace %0, %1..%n arguments with group_list parameters
         for m in re.finditer("%[0-9]*",original):
             param_id = m.group(0)
             param_index = int(param_id[1:])
-            original=original.replace(param_id,parameter_list[param_index])
+            replace_text = parameter_list[param_index]
+            if removeEscapes: replace_text = replace_text.replace('\\','') # remove escape characters
+            original=original.replace(param_id,replace_text)
 
         # escape [ ] characters
         processed = ""
@@ -57,7 +61,7 @@ class Optimiser:
     def getReplacement(self, pattern_id, param_list):
         new_lines=[]
         for line in self.replacements[pattern_id]:
-            new_lines.append(self.subParameters(line,param_list))
+            new_lines.append(self.subParameters(line,param_list,removeEscapes=True))
 
         return new_lines
     
@@ -79,7 +83,10 @@ class Optimiser:
 
             for optim_num, optim in enumerate(self.patterns):
                 text,updated = self.ApplyOptimisation(text,optim_num)
-                if updated: optimisation_finished=False
+                if updated:
+                    optimisation_finished=False
+                    if self.shoutouts[optim_num]:
+                        print("Optimisation #"+str(optim_num)+" applied!")
         return text
     
     def ApplyOptimisation(self, text, pattern_id):
@@ -106,14 +113,16 @@ class Optimiser:
             for optim_lineN, optim_line in enumerate(optim):
                 line_index = line_num+optim_lineN
                 if "%" in optim_line:
-                   optim_line = self.subParameters(optim_line,group_list)
-                    
+                    optim_line = self.subParameters(optim_line,group_list)
+                    if self.shoutouts[pattern_id]: print(group_list)
                 test = None
                 if line_index < len(text_lines):
                     test = re.match(optim_line,text_lines[line_num+optim_lineN])
                 if test:
                     removed_lines+=text_lines[line_num+optim_lineN]
                     for g in test.groups():
+                        if "[" in g: g=g.replace("[","\[")
+                        if "]" in g: g=g.replace("]","\]")
                         group_list.append(g)
                     line_len+=1
                 else:
@@ -148,8 +157,17 @@ class Optimiser:
         # Conditional jumping optimisations
         inverse_conditionals = {"jl":"jge","jg":"jle","je":"jne","jne":"je","jle":"jg","jge":"jl","jz":"jnz","jnz":"jz"}
         self.addPattern(["mov *m,0x01","cmp A,B","*j *t","mov %0,0x00","%2:","mov A,%0","cmp A,0x00","jz *t"],["cmp A,B","(%1) %3"],process=lambda a:inverse_conditionals[a]) # temp register storage
-        self.addPattern(["mov *m,0x01","cmp A,B","*j *t","mov %0,0x00","%2:","mov A,%0","cmp A,0x00","jnz *t"],["cmp A,B","(%1) %3"],process=lambda a:inverse_conditionals[a]) # temp register storage
+        self.addPattern(["mov *m,0x01","cmp A,B","*j *t","mov %0,0x00","%2:","mov A,%0","cmp A,0x00","jnz *t"],["cmp A,B","%1 %3"]) # temp register
 
+        # dowhile optimisations:
+        self.addPattern(["mov A,*t","mov B,*t","push A","mov A,B","inc A","mov %1,A","mov B,A","pop A"],["mov A,%1","inc A","mov %1,A","mov B,A","mov A,%0"],shoutout=True)
+        self.addPattern(["mov A,*t","mov B,*t","push A","mov A,B","dec A","mov %1,A","mov B,A","pop A"],["mov A,%1","dec A","mov %1,A","mov B,A","mov A,%0"],shoutout=True)
+        
+        self.addPattern(["mov *m,*t","push A","mov A,%0","inc A","mov %1,A","mov %0,A","pop A"],["mov A,%1","inc A","mov %1,A","mov %0,A"])
+        self.addPattern(["mov *m,*t","push A","mov A,%0","dec A","mov %1,A","mov %0,A","pop A"],["mov A,%1","dec A","mov %1,A","mov %0,A"])
+        # Remove unnecessary intermediate registers (without swapping A and B):
+        self.addPattern(["mov *m,A","mov A,*t","mov B,%0"],["mov B,A","mov A,%1"])
+        
         # Optimise for A = 0xXX + 0xYY
         self.addPattern(["mov A,0x*h","mov B,0x*h","add A,B"],["mov A,(0x%0+0x%1)"],process=lambda a: '0x{:02X}'.format(int(eval(a))&0xff))
         # Optimise for A = 0xXX - 0xYY

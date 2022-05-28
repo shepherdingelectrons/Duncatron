@@ -141,7 +141,7 @@ optimised_ASMcode = asmOptimiser.optimise_code(ASMcode)
 print(optimised_ASMcode)
 print("Assembling to machine code")
 CPU.reset() # wipes memory (by default) and restores state
-asm = Assembler(None,CPU.Memory,ASMcode) # We pass on the CPU Memory so that
+asm = Assembler(None,CPU.Memory,optimised_ASMcode) # We pass on the CPU Memory so that
 # the machine code can be put into it for simulation
 
 if asm.assemble():
