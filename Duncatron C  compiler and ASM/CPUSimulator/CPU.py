@@ -459,7 +459,7 @@ T_HL = signal("T_HL") # need to check polarity of these signals. For now assume 
 T_IO = signal("T_IO") # need to check polarity of these signals. For now assume I=1, O=0
 T_EN = signal("T_EN") # need to check polarity of these signals. For now assume enable = 1
 Ri = signal("Ri")
-Fi = signal("Fi",activeLow=True)
+Fi = signal("Fi",activeLow=True) # T_IO flag is used to control flag in direction (from ALU or databus)
 SPdec = signal("SPdec")
 SPinc = signal("SPinc")
 Bi = signal("Bi",activeLow=True)

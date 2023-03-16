@@ -1,3 +1,8 @@
+mov A,0x00
+mov [0x8000],A
+mov [0x8001],A
+mov [0x8002],A
+
 optimised_main:
 mov A,0x41
 mov [0x00],A
@@ -8,6 +13,14 @@ mov A,0x5B
 mov B,[0x00]
 cmp A,B
 jl exitwhile1
+
+mov A,B
+shl A
+shl A
+shl A
+shl A
+mov [0x8000],A
+
 mov A,[0x00]
 mov U,A
 mov B,[0x01]
