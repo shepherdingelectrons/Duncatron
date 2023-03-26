@@ -7,6 +7,7 @@ class Assembler:
     CALL_OR_JMP_TO_LABEL = 258
     DATABYTES = 259
     DATASTRING = 260
+    MEMORY_LABEL = 261
     
     def __init__(self,filename,memory,text):
         self.lines = []
@@ -92,32 +93,44 @@ class Assembler:
                 elif opcode==self.LABEL_DEFINITION:
                     if not self.add_label(asm[1],pointer):
                         return False
-                elif opcode == self.CALL_OR_JMP_TO_LABEL:
+                elif opcode == self.CALL_OR_JMP_TO_LABEL or opcode == self.MEMORY_LABEL:
                     found = self.add_call_or_jmp_reference(asm[2],pointer+1)
+                    
+                    space=""
+                    if opcode==self.CALL_OR_JMP_TO_LABEL: space=" "
+                    
                     if found:
-                        myline = asm[1]+" 0x"+format(self.labels[asm[2]], '04x')
+                        myline = asm[1]+space+"0x"+format(self.labels[asm[2]], '04x')
                     else:
-                        myline = asm[1]+" 0x0000"
+                        myline = asm[1]+space+"0x0000"
                         
                     newasm = self.machinecode(myline) # add dummy address as padding for now
                     for byte in newasm:
                         self.memory[pointer]=byte
                         pointer+=1
                 elif opcode == self.DATABYTES:
-                    bytelist = asm[1].split(",")
+                    #print(asm[1],type(asm[1]))
+                    asm[1]=str(asm[1])
+                    
+                    if "," in asm[1]:
+                        bytelist = asm[1].split(",")
+                    else:
+                        bytelist = [str(asm[1])]
+                   
                     for databyte in bytelist:
                         int_byte = self.process_databyte(databyte.strip())
                         if int_byte==False:
                             print("Could not process data byte '"+databyte+"' at line number:",line_number)
                             return False
                         self.memory[pointer]=int_byte
+                        print("Writing:",pointer,int_byte)
                         pointer+=1
                 elif opcode == self.DATASTRING:
                     datastr = asm[1]
                     for character in asm[1]:
                         self.memory[pointer]=ord(character)
                         pointer+=1
-                    self.memory[pointer]=0
+                    self.memory[pointer]=0 # Add zero terminator automatically
                     pointer+=1
                 else:
                     print("Don't know how to process opcode! OPCODE=",opcode)
@@ -178,6 +191,9 @@ class Assembler:
 
         self.asmregex.append(("^db (.*)$",self.DATABYTES))
         self.asmregex.append(("^dstr '(.*)'$",self.DATASTRING))
+
+        # use memory labels with some instructions:
+        self.asmregex.append(("^(MOV r0r1,)([^0^x].*)$",self.MEMORY_LABEL)) # this could be generalised in future to all 16-bit memory reference instructions
         
         return True
     
@@ -242,7 +258,7 @@ class Assembler:
 if __name__=="__main__":
     #from .define_instructions import define_instructions
     memory = bytearray(0x10000)
-    asm = Assembler("testasm3.txt",memory,"")
+    asm = Assembler("asm files\\boot.txt",memory,"")
     success = asm.assemble()
     if success:
         print("Assembling successful")

@@ -1,0 +1,38 @@
+main:
+mov r0r1,hello
+push_PC+1
+call printstr
+mov r0r1,world
+push_PC+1
+call printstr
+mov r0r1,welcome
+push_PC+1
+call printstr
+halt
+
+; *********************************************************************
+; PRINTSTR
+; r0r1 = pointer to start of string (null terminated)
+; *********************************************************************
+0x1000: ; page-aligned for now
+printstr:
+MOV A,[r0r1]
+CMP A,0x00
+JE printstr.endlabel
+MOV U,A
+INC r0r1
+JMP printstr
+printstr.endlabel:
+mov A,0x0A
+mov U,A
+mov A,0x0D
+mov U,A
+RET
+
+0x2000:
+hello:
+dstr 'Hello'
+world:
+dstr 'world'
+welcome:
+dstr 'Welcome to Duncatron v1.0'

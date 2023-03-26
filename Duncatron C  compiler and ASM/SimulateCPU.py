@@ -23,7 +23,7 @@ class Emulator:
         
         self.swidth = w * 40
         self.sheight = h * 15
-        self.screen = pygame.display.set_mode((self.swidth, self.sheight))
+        self.screen = pygame.display.set_mode((700,500))
 
         wincolour = (255,0,0)
         self.screen.fill(wincolour)
@@ -33,18 +33,8 @@ class Emulator:
 
         self.quit=False
 
-    def printchar(self,char):
-        fg = 250, 240, 230
-        bg = 5, 5, 5
-        
-        if len(char)!=1:
-            print("Error! char must be a single character!")
-            return
-        #text = "Fonty"
-        w,h = self.font.size(char)
-        ren = self.font.render(char, 0, fg, bg)
-        self.screen.blit(ren, (self.fx, self.fy))
-        
+    def printToConsole(self,char):
+        w = self.printchar(char, self.fx, self.fy,is_int=True)
         self.fx+=w
         if self.fx>=self.swidth:
             self.fx=0
@@ -52,6 +42,23 @@ class Emulator:
         if self.fy>=self.sheight:
             #  bump up image by h
             pass
+            
+    def printchar(self,char, cx,cy,is_int=False): # expects char to be a byte
+        fg = 250, 240, 230
+        bg = 5, 5, 5
+        w,h = self.font.size("A")
+
+        if is_int:
+            if char<31:
+                if char==13: self.fx=0
+                if char==10: self.fy+=h
+                return 0
+            char=chr(char)
+        
+        ren = self.font.render(char, 0, fg, bg)
+        self.screen.blit(ren, (cx, cy))
+
+        return w
         
     def VRAM(self,bank=0):
         px,py=0,0
@@ -70,15 +77,27 @@ class Emulator:
             if px>=16:
                 px=0
                 py+=1
+
+    def displayRegister(self,reg,rx,ry):
+        text = format(reg, '08b')
+        for c in text:
+            w = self.printchar(c,rx,ry)
+            rx+=w
         
-    def print(self,text):
+    def print(self,text,tx,ty):
         pass
     
     def pygame_handle(self):
         self.VRAM()
+        self.displayRegister(CPU.A_reg.value,500,0)
+        self.displayRegister(CPU.B_reg.value,500,29)
+        self.displayRegister(CPU.F_reg.value,500,29*2)
+        
         pygame.display.flip()
         for event in pygame.event.get():
-            if event.type == pygame.QUIT:
+            if event.type == pygame.KEYDOWN:
+                print(event.key)
+            elif event.type == pygame.QUIT:
                 self.quit=True
         return not self.quit
 
@@ -89,7 +108,7 @@ def randomiseRAM(memory, start,end):
 if __name__=="__main__":
     # *********************** ASSEMBLE CODE *******************************
     print("Assembling code:")
-    asm = Assembler("asm files\\testasm2.txt",CPU.Memory,"")
+    asm = Assembler("asm files\\boot.txt",CPU.Memory,"")
     #asm.instruction_str = CPUSimulator.define_instructions.instruction_str
     success = asm.assemble()
     # *********************** EMULATE CPU *******************************
@@ -118,7 +137,7 @@ if __name__=="__main__":
             
             if CPU.U_reg.value!=-1: # Bit of a hack
                 print(chr(CPU.U_reg.value), end='')
-                myEmulator.printchar(chr(CPU.U_reg.value))
+                myEmulator.printToConsole(CPU.U_reg.value)
                 CPU.U_reg.value=-1
 
             if debug and CPU.CPU.microcode_counter==2:
