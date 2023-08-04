@@ -133,8 +133,8 @@ if __name__=="__main__":
                 print("BREAKING")
                 break
 
-            CPU.CPU.compute(verbose=(( CPU.CPU.microcode_counter==1) and debug))
-            
+            #CPU.CPU.compute(verbose=(( CPU.CPU.microcode_counter==1) and debug))
+            CPU.CPU.compute(verbose=False)           
             if CPU.U_reg.value!=-1: # Bit of a hack
                 print(chr(CPU.U_reg.value), end='')
                 myEmulator.printToConsole(CPU.U_reg.value)

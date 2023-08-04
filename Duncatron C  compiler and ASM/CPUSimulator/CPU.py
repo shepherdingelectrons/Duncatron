@@ -439,7 +439,13 @@ def reset(clear_memory=True):
     if clear_memory:
         for a in range(len(Memory)):
             Memory[a]=0
-    
+
+def OpenControlFile(filename):
+    f = open(filename, "rb")
+    readarray = f.read()
+    f.close()
+    return readarray
+
 signal_group = [] # This gets populated in sequential order as signals are
 # defined, therefore the signal definition order is important and needs to
 # match the order defined in 'define_instructions.py', as well as matching
@@ -464,14 +470,14 @@ SPdec = signal("SPdec")
 SPinc = signal("SPinc")
 Bi = signal("Bi",activeLow=True)
 
-PCi = signal("PCi",activeLow=True)
+PCi = signal("PCi")
 Ao = signal("Ao",activeLow=True)
 OUTen = signal("OUTen",activeLow=True,demux=True)
 INen = signal("INen",activeLow=True,demux=True)
 X = signal("X",activeLow=True)
 Fo = signal("Fo",activeLow=True)
 HALT = signal("HALT")
-SPo = signal("SPo")
+SPo = signal("SPo",activeLow=True)
 
 LOW_databus = databus("LOW8",floating=lambda : X.value)
 HI_databus = databus("HI8",floating=lambda : 0x88) # Zero page
@@ -516,11 +522,17 @@ CPU.connect(U_reg,INen,1,UART_out) # Get UART received byte
 reset() # Starting positions 
 
 if __name__=="__main__":
-    from control_EEPROM0 import control0
-    from control_EEPROM1 import control1
-    from control_EEPROM2 import control2
+    control0 = OpenControlFile("control_EEPROM0.txt")
+    control1 = OpenControlFile("control_EEPROM1.txt")
+    control2 = OpenControlFile("control_EEPROM2.txt")  
+    #from control_EEPROM0 import control0
+    #from control_EEPROM1 import control1
+    #from control_EEPROM2 import control2
 else:
-    from .control_EEPROM0 import control0
-    from .control_EEPROM1 import control1
-    from .control_EEPROM2 import control2
+    control0 = OpenControlFile(".\CPUSimulator\control_EEPROM0.txt")
+    control1 = OpenControlFile(".\CPUSimulator\control_EEPROM1.txt")
+    control2 = OpenControlFile(".\CPUSimulator\control_EEPROM2.txt")
+    #from .control_EEPROM0 import control0
+    #from .control_EEPROM1 import control1
+    #from .control_EEPROM2 import control2
 

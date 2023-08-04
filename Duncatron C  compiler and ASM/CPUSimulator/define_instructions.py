@@ -873,30 +873,30 @@ define_signal("Ai",True) #0
 define_signal("ALUo",True)#1
 define_signal("Ii",True) # 2
 define_signal("PCo",True) #3
-define_signal("PCinc",False)#4
+define_signal("PCinc")#4
 define_signal("MARi") # 5
-define_signal("Ro",False) # 6 - RAM out, memory read
-define_signal("MC_reset",False) # 7 - microcode counter reset
+define_signal("Ro") # 6 - RAM out, memory read
+define_signal("MC_reset") # 7 - microcode counter reset
 
 # Second set of control signals lets us interface with the higher 8 bits of 16-bit bus, write to memory, set flags and use the stack
 define_signal("T_HL") # 8 # Transfer register High/Low.  Need to check these all make sense
 define_signal("T_IO") # 9 # Transfer register In/Out.  Need to check these all make sense T_IO = LOW means INPUT, T_IO = HIGH means OUTPUT
 define_signal("T_EN") # 10 # Transfer register enable.
-define_signal("Ri",False)   # 11 # Memory write
+define_signal("Ri")   # 11 # Memory write
 define_signal("Fi",True)    # 12
-define_signal("SPdec",False)# 13
-define_signal("SPinc",False)# 14
+define_signal("SPdec")# 13
+define_signal("SPinc")# 14
 define_signal("Bi",True) #15
 
 # 3rd set expands register set (r0-5), X-signal and allows JMPing with PCi
-define_signal("PCi",True) #
+define_signal("PCi") #
 define_signal("Ao",True)
 define_signal("OUTen",True) # enable register-out demux
 define_signal("INen",True) # enable register-in demux
 define_signal("X",True) # X-signal, does various XOR manipulation of o0, a3 and i0
 define_signal("Fo", True) # FLAG register out
 define_signal("HALT")
-define_signal("SPo")
+define_signal("SPo",True)
 
 FETCH0 = ["PCo","MARi"]
 FETCH1 = ["Ro","Ii","PCinc"]
@@ -1078,14 +1078,17 @@ if __name__=="__main__":
 else:
     write_EEPROM = False
 
-def write_EEPROM_block(EEPROM_BYTE):
+def write_EEPROM_block(EEPROM_BYTE,textmode=False):
     # Which byte of the control word is getting written to the EEPROM? EEPROM_BYTE either 0, 1 or 2 for 24 control signals
     # bits 0-7: EEPROM_BYTE = 0
     # bits 15-8: EEPROM_BYTE = 1
     # bits 23-16: EEPROM_BYTE = 2
 
-    f = open("control_EEPROM"+str(EEPROM_BYTE)+".py","w")
-    f.write("control"+str(EEPROM_BYTE)+"=")
+    if textmode:
+        f = open("control_EEPROM"+str(EEPROM_BYTE)+".txt","wb")
+    else:
+        f = open("control_EEPROM"+str(EEPROM_BYTE)+".py","w")
+        f.write("control"+str(EEPROM_BYTE)+"=")
 
     writearray = bytearray(2**(8+2+3))
 
@@ -1097,13 +1100,17 @@ def write_EEPROM_block(EEPROM_BYTE):
         control_word = get_microcode_int(microcode[ins+(ZC<<8)][mmm])
         control_byte = (control_word>>(8*EEPROM_BYTE)) & 0xFF
         
-        writearray[addr] = control_byte 
+        writearray[addr] = control_byte
+            
 ##        if EEPROM_BYTE==1:
 ##            print(addr,ins,mmm,ZC,bin(control_word),bin(control_byte))
-
-    f.write(str(writearray))
+    if textmode:
+        f.write(writearray)
+        print("Wrote...'control_EEPROM"+str(EEPROM_BYTE)+".txt'")
+    else:
+        f.write(str(writearray))
+        print("Wrote...'control_EEPROM"+str(EEPROM_BYTE)+".py'")     
     f.close()
-    print("Wrote...'control_EEPROM"+str(EEPROM_BYTE)+".py'")
 
 print("Free instruction slots at:")
 for i in free_ins:
@@ -1128,7 +1135,7 @@ for i in free_ins:
 #ALU_INSTRUCTIONS    
     print("Op=",i,bin(i),"in_reg=",reg_names_IN[in_reg],"out_reg=",reg_names_OUT[out_reg],"in_regX=",reg_names_IN[in_regX],"out_regX=",reg_names_OUT[out_regX],"ALU=",ALU_INSTRUCTIONS[alu],"ALUX=",ALU_INSTRUCTIONS[aluX])
 if write_EEPROM:
-    write_EEPROM_block(0)
-    write_EEPROM_block(1)
-    write_EEPROM_block(2)
+    write_EEPROM_block(0,textmode=True)
+    write_EEPROM_block(1,textmode=True)
+    write_EEPROM_block(2,textmode=True)
     

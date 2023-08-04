@@ -1,4 +1,6 @@
 main:
+mov A,0x46
+mov U,A
 mov r0r1,hello
 push_PC+1
 call printstr
