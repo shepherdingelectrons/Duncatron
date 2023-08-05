@@ -759,7 +759,7 @@ def add_JMPs():
     push=add_instruction("PUSH_PC+1",pos=first_slot,microcode_lines=[FETCH0,FETCH1,["SPdec"],["SPo","MARi"],["PCo","Ri","SPdec","T_EN","T_HL"],["SPo","MARi"],["T_EN","T_IO","Ri"]])
                                                                                                                                             # Output 0x@@ (transfer reg) --> low bus
                                                                                     # RAM --> Transfer reg (via low bus)... then: Transfer reg --> High bus OUTPUT 
-    pos=add_instruction("INT~",pos=push+1,microcode_lines=[FETCH0,FETCH1,["MARi"],["Ro","T_EN"],["MARi","X"],["Ro","T_EN","T_HL","T_IO","PCi"]])
+    pos=add_instruction("INT",pos=push+1,microcode_lines=[FETCH0,FETCH1,["MARi"],["Ro","T_EN"],["MARi","X"],["Ro","T_EN","T_HL","T_IO","PCi"]])
     # INT~, the tilde tells the instruction to add a padding byte to the instruction so that (what? RETI behaves correctly?) 
     print("PUSH PC+1 at:",push,hex(push),bin(push)) 
     print("INT at:",pos,hex(pos),bin(pos))

@@ -26,6 +26,10 @@
 ; interupt code here
 ; .
 ; RETI ; Note, no need for a POP T
+;
+; The interupt function can be called manually, must be preceeded by PUSH_PC+1, i.e.
+; PUSH_PC+1
+; INT
 
 init:
 mov r0r1,INTERUPT; setup interupt jump vector
@@ -55,7 +59,10 @@ push_PC+1
 call_NZ message
 
 push_PC+1
-INT~
+INT
+halt
+
+mov U,A
 push_PC+1
 call message
 halt
@@ -113,4 +120,6 @@ PUSH_PC+1
 call message
 mov U,0x52
 mov U,0x53
+mov A,0x42
+mov U,A
 RETI

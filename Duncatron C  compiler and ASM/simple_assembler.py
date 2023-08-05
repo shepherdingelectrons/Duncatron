@@ -76,7 +76,7 @@ class Assembler:
 
         POPT_opcode = self.machinecode("POP T")[0]
         RET_opcode = self.machinecode("RET")[0]
-        INT_opcode = self.machinecode("INT~")[0]
+        INT_opcode = self.machinecode("INT")[0]
         RETI_opcode = self.machinecode("RETI")[0]
         PUSHPC_opcode = self.machinecode("PUSH_PC+1")[0]
         CALLs =["CALL Z","CALL NZ","CALL E","CALL NE","CALL G","CALL GE","CALL L","CALL LE","CALL C","CALL NC"]
@@ -105,7 +105,7 @@ class Assembler:
                     print("RET must be preceeded by 'POP T', line number:",line_number)
                     return False
                 if opcode==INT_opcode and was_PUSHPC==False:
-                    print("INT~ must be preceeded by 'PUSH_PC+1', line number:", line_number)
+                    print("INT must be preceeded by 'PUSH_PC+1', line number:", line_number)
                 if opcode in CALL_opcodes and was_PUSHPC==False:
                     print(line)
                     print("CALLs must be preceeded by 'PUSH_PC+1', line number:", line_number)

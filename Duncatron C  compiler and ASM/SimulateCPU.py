@@ -120,7 +120,6 @@ if __name__=="__main__":
     if success:
         randomiseRAM(CPU.Memory,0x8000,0x10000)
         print("Assemble OK!")
-        print(asm.labels)
         current_pos = 0
         
         print("Emulating CPU:")
