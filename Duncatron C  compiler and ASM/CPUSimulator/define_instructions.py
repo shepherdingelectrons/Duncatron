@@ -809,8 +809,8 @@ def add_JMPs():
             ins = c+" 0x@@@@"
             jsearch = "CALL"
         else:
-            jsearch = "J"+c.split(" ")[1]
-            ins = c+",0x@@@@"
+            jsearch = "J"+c.split("_")[1]
+            ins = c+" 0x@@@@"
         
         call_pos = add_instruction(""+ins,pos=None,addresses=valid)#,microcode_lines=[FETCH0,FETCH1,["PCo","MARi"],["Ro","T_EN"],["X","T_EN","T_HL","T_IO","PCi"]])#["Ro","T_EN","PCinc"],["PCo","MARi"],["Ro","T_HL","T_IO","T_EN","PCi"]])
 
@@ -936,7 +936,7 @@ reg_names=["A","B","r0","r1","r2","r3","r4","r5"]
 reg_names_OUT = ["CLEAR INT STATUS","B","r0","r1","r2","r3","r4","r5"]
 
 ALU_INSTRUCTIONS = ["ADD A,B","SUB A,B","CMP A,B","DEC A","ADDC A,B","SUBC A,B","CMPC A,B","NOT A","SHL A","XOR A,B","NAND A,B","OR A,B","INC A","AND A,B", "NOR A,B", "RCL A"]
-CALLS=["CALL Z","CALL NZ","CALL E","CALL NE","CALL G","CALL GE","CALL L","CALL LE","CALL","CALL C","CALL NC"]
+CALLS=["CALL_Z","CALL_NZ","CALL_E","CALL_NE","CALL_G","CALL_GE","CALL_L","CALL_LE","CALL","CALL_C","CALL_NC"]
 
 #add_UART()
 add_ALU_inc_dec()
@@ -1037,7 +1037,7 @@ if output_type==1:# append other instructions for customasm
             find_call = find_instruction("CALL 0x@@@@")[2:]
             c+=" "
         else:
-            find_call = find_instruction(""+c+",0x@@@@")[2:]
+            find_call = find_instruction(""+c+",0x@@@@")[2:] # this might be wrong now, but we're not using customasm anyway
             c+=","
         #CALL Z,{addr16: u16} => {assert((addr16[7:0]==0)), 0xdfe2 @addr16[15:8]}
 	 

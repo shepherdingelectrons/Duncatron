@@ -1,0 +1,19 @@
+push_PC+1
+call function
+
+push_PC+1
+call_Z secondfunc
+
+0x1000:
+function:
+mov U,0x41
+pop t
+ret
+
+0x2000:
+secondfunc:
+mov U,0x42
+pop t
+ret
+
+; Issue with regex and CALL Z,function I suspect!

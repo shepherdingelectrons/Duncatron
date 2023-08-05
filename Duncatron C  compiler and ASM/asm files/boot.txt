@@ -5,7 +5,7 @@
 ; call Myfunction
 ; 
 ; How to define and return from functions correctly
-;Myfunction:
+; Myfunction:
 ; .
 ; . 
 ; .
@@ -41,8 +41,18 @@ inc A
 mov U,A
 mov U,0x0A
 
+mov B,A
+xor A,B
+jz iszero
+
+mov U,0x42 ; B
+mov U,0x41 ;A
+iszero:
+mov U,0x41 ;A
+mov U,0x42 ;B
+
 push_PC+1
-call message
+call_NZ message
 
 push_PC+1
 INT~
@@ -70,6 +80,7 @@ POP T
 RET
 
 ;**************** message*********
+0x1000:
 message:
 mov r0r1,hello
 push_PC+1

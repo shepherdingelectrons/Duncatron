@@ -4,7 +4,10 @@ import CPUSimulator.define_instructions
 class Assembler:
     ADDRESS_DEFINITION = 256
     LABEL_DEFINITION = 257
-    CALL_OR_JMP_TO_LABEL = 258
+    #CALL_OR_JMP_TO_LABEL = 258
+    CALL_TO_LABEL = 258
+    JMP_TO_LABEL = 262
+    
     DATABYTES = 259
     DATASTRING = 260
     MEMORY_LABEL = 261
@@ -70,17 +73,49 @@ class Assembler:
     
     def assemble(self):
         if not self.make_regex(): return False
-        
+
+        POPT_opcode = self.machinecode("POP T")[0]
+        RET_opcode = self.machinecode("RET")[0]
+        INT_opcode = self.machinecode("INT~")[0]
+        RETI_opcode = self.machinecode("RETI")[0]
+        PUSHPC_opcode = self.machinecode("PUSH_PC+1")[0]
+        CALLs =["CALL Z","CALL NZ","CALL E","CALL NE","CALL G","CALL GE","CALL L","CALL LE","CALL C","CALL NC"]
+        CALL_opcodes = []
+        for call in CALLs:
+            CALL_opcodes.append(self.machinecode(call+",0x0000")[0])
+            CALL_opcodes.append(self.machinecode(call+",__label__")[0])            
+            
+        CALL_opcodes.append(self.machinecode("CALL 0x0000")[0])
+        CALL_opcodes.append(self.machinecode("CALL __label__")[0])
+
         pointer = 0
         for line_number,line in enumerate(self.lines):
             cleaned_line = self.clean_line(line)
             if cleaned_line==False:
                 print("Error processing line #"+str(line_number)+": "+line)
                 return False
-
+    
             asm = self.machinecode(cleaned_line)
             if asm:
                 opcode = asm[0]
+
+                # try to flag some likely sources of programming bugs
+                
+                if opcode==RET_opcode and was_POPT==False:
+                    print("RET must be preceeded by 'POP T', line number:",line_number)
+                    return False
+                if opcode==INT_opcode and was_PUSHPC==False:
+                    print("INT~ must be preceeded by 'PUSH_PC+1', line number:", line_number)
+                if opcode in CALL_opcodes and was_PUSHPC==False:
+                    print(line)
+                    print("CALLs must be preceeded by 'PUSH_PC+1', line number:", line_number)
+                    return False
+                if opcode==RETI_opcode and was_POPT:
+                    print("RETI should NOT be preceeded by 'POP T', line number:", line_number)
+                
+                was_POPT = (opcode==POPT_opcode)
+                was_PUSHPC = (opcode==PUSHPC_opcode)
+                
                 if opcode<256: # a normal instruction, write into memory
                     for byte in asm:
                         self.memory[pointer]=byte
@@ -93,11 +128,12 @@ class Assembler:
                 elif opcode==self.LABEL_DEFINITION:
                     if not self.add_label(asm[1],pointer):
                         return False
-                elif opcode == self.CALL_OR_JMP_TO_LABEL or opcode == self.MEMORY_LABEL:
+##                elif opcode == self.CALL_OR_JMP_TO_LABEL or opcode == self.MEMORY_LABEL:
+                elif opcode == self.CALL_TO_LABEL or opcode == self.JMP_TO_LABEL or opcode == self.MEMORY_LABEL:
                     found = self.add_call_or_jmp_reference(asm[2],pointer+1)
                     
                     space=""
-                    if opcode==self.CALL_OR_JMP_TO_LABEL: space=" "
+                    if opcode==self.CALL_TO_LABEL or opcode==self.JMP_TO_LABEL: space=" "
                     
                     if found:
                         myline = asm[1]+space+"0x"+format(self.labels[asm[2]], '04x')
@@ -180,14 +216,17 @@ class Assembler:
         self.asmregex.append(("^(.*):$",self.LABEL_DEFINITION))
 
         JMPs = ["JZ","JNZ","JE","JNE","JG","JGE","JL","JLE","JMP","JC","JNC"]
-        CALLs =["CALL Z","CALL NZ","CALL E","CALL NE","CALL G","CALL GE","CALL L","CALL LE","CALL","CALL C","CALL NC"]
+        CALLs =["CALL_Z","CALL_NZ","CALL_E","CALL_NE","CALL_G","CALL_GE","CALL_L","CALL_LE","CALL","CALL_C","CALL_NC"]
 
         callsAndjmps = JMPs+CALLs
         
-        for instruction in callsAndjmps:
-            #regex = "^("+instruction+") ([^0][^x].*)$"
+        for instruction in CALLs:
             regex = "^("+instruction+") ([^0^x].*)$"
-            self.asmregex.append((regex,self.CALL_OR_JMP_TO_LABEL))
+            self.asmregex.append((regex,self.CALL_TO_LABEL))
+
+        for instruction in JMPs:
+            regex = "^("+instruction+") ([^0^x].*)$"
+            self.asmregex.append((regex,self.JMP_TO_LABEL))        
 
         self.asmregex.append(("^db (.*)$",self.DATABYTES))
         self.asmregex.append(("^dstr '(.*)'$",self.DATASTRING))
