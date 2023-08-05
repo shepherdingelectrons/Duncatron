@@ -22,8 +22,9 @@ class signal():
                 i1 = 1 if (1<<6)&ins else 0
                 i0 = 1 if (1<<2)&ins else 0
 
-                if X.isactive(None):
-                    i0=1-i0
+                #if X.isactive(None):
+                i0=X.value ^ i0# XOR
+                    #i0=1-i0
                 self.setControlWord((i2<<2)|(i1<<1)|i0)
  
             elif self.name=="OUTen":
@@ -31,8 +32,9 @@ class signal():
                 o1 = 1 if (1<<4)&ins else 0
                 o0 = 1 if (1<<3)&ins else 0
 
-                if X.isactive(None):
-                    o0 = 1-o0
+                #if X.isactive(None):
+                #    o0 = 1-o0
+                o0 = X.value ^ o0 # XOR
                 self.setControlWord((o2<<2)|(o1<<1)|o0)
 
             if self.value==self.on() and self.controlword == demux_index:
@@ -389,8 +391,9 @@ def ALUcalc():
     
     alu_func = I_reg.value & 0b1111
     a3 = 1 if alu_func&(1<<3) else 0
-    if X.isactive(None):
-        a3=1-a3
+    #if X.isactive(None):
+    #    a3=1-a3
+    a3 = X.value ^ a3 # XOR
     
     alu_func = (a3<<3) | (alu_func&0b0111)
 
@@ -474,7 +477,7 @@ PCi = signal("PCi")
 Ao = signal("Ao",activeLow=True)
 OUTen = signal("OUTen",activeLow=True,demux=True)
 INen = signal("INen",activeLow=True,demux=True)
-X = signal("X",activeLow=True)
+X = signal("X")
 Fo = signal("Fo",activeLow=True)
 HALT = signal("HALT")
 SPo = signal("SPo",activeLow=True)

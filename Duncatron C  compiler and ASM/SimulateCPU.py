@@ -35,6 +35,7 @@ class Emulator:
 
     def printToConsole(self,char):
         w = self.printchar(char, self.fx, self.fy,is_int=True)
+        h = 10
         self.fx+=w
         if self.fx>=self.swidth:
             self.fx=0
@@ -78,8 +79,8 @@ class Emulator:
                 px=0
                 py+=1
 
-    def displayRegister(self,reg,rx,ry):
-        text = format(reg, '08b')
+    def displayRegister(self,reg,rx,ry,num_format='08b'):
+        text = format(reg, num_format)
         for c in text:
             w = self.printchar(c,rx,ry)
             rx+=w
@@ -88,11 +89,14 @@ class Emulator:
         pass
     
     def pygame_handle(self):
-        self.VRAM()
+        #self.VRAM()
         self.displayRegister(CPU.A_reg.value,500,0)
         self.displayRegister(CPU.B_reg.value,500,29)
         self.displayRegister(CPU.F_reg.value,500,29*2)
-        
+        self.displayRegister(CPU.PC.valueHI<<8|CPU.PC.value,500,29*3,'04x')
+        self.displayRegister(CPU.SP.valueHI<<8|CPU.SP.value,500,29*4,'04x')
+                
+
         pygame.display.flip()
         for event in pygame.event.get():
             if event.type == pygame.KEYDOWN:
@@ -116,6 +120,7 @@ if __name__=="__main__":
     if success:
         randomiseRAM(CPU.Memory,0x8000,0x10000)
         print("Assemble OK!")
+        print(asm.labels)
         current_pos = 0
         
         print("Emulating CPU:")
@@ -133,8 +138,8 @@ if __name__=="__main__":
                 print("BREAKING")
                 break
 
-            #CPU.CPU.compute(verbose=(( CPU.CPU.microcode_counter==1) and debug))
-            CPU.CPU.compute(verbose=False)           
+            CPU.CPU.compute(verbose=(( CPU.CPU.microcode_counter==1) and debug))
+            #CPU.CPU.compute(verbose=False)           
             if CPU.U_reg.value!=-1: # Bit of a hack
                 print(chr(CPU.U_reg.value), end='')
                 myEmulator.printToConsole(CPU.U_reg.value)
@@ -152,7 +157,8 @@ if __name__=="__main__":
                 uartRX=uartRX[1:] # get next character from UART string buffer
 
                
-    ##    prettyROM(0,20)
+    ##    prettyROM(0,20)#
+        print("HALT")
         print("Final stack pointer=",CPU.SP.value)
         while myEmulator.pygame_handle():
             pass

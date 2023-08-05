@@ -1,6 +1,76 @@
+; Note to programmers:
+; How to call functions:
+;
+; PUSH_PC+1
+; call Myfunction
+; 
+; How to define and return from functions correctly
+;Myfunction:
+; .
+; . 
+; .
+; POP T
+; RET
+
+; Interupt:
+; the zero-page needs to be programmed with the high and low address of the interupt vector as soon as possible.
+; i.e. 
+
+; init:
+; mov r0r1,INTERUPT; setup interupt jump vector
+; mov [0x00],r0
+; mov [0x01],r1
+;
+; Define the INTERUPT function:
+; INTERUPT:
+; interupt code here
+; .
+; RETI ; Note, no need for a POP T
+
+init:
+mov r0r1,INTERUPT; setup interupt jump vector
+mov [0x00],r0
+mov [0x01],r1
+
 main:
 mov A,0x46
 mov U,A
+inc A
+mov U,A	
+inc A
+mov U,A
+mov U,0x0A
+
+push_PC+1
+call message
+
+push_PC+1
+INT~
+push_PC+1
+call message
+halt
+
+
+
+; *********************************************************************
+; PRINTSTR
+; r0r1 = pointer to start of string (null terminated)
+; *********************************************************************
+printstr:
+MOV A,[r0r1]
+CMP A,0x00
+JE printstr.endlabel
+MOV U,A
+INC r0r1
+JMP printstr
+printstr.endlabel:
+mov U,0x0A
+mov U,0X0D
+POP T
+RET
+
+;**************** message*********
+message:
 mov r0r1,hello
 push_PC+1
 call printstr
@@ -10,31 +80,26 @@ call printstr
 mov r0r1,welcome
 push_PC+1
 call printstr
-halt
-
-; *********************************************************************
-; PRINTSTR
-; r0r1 = pointer to start of string (null terminated)
-; *********************************************************************
-0x1000: ; page-aligned for now
-printstr:
-MOV A,[r0r1]
-CMP A,0x00
-JE printstr.endlabel
-MOV U,A
-INC r0r1
-JMP printstr
-printstr.endlabel:
-mov A,0x0A
-mov U,A
-mov A,0x0D
-mov U,A
+POP T
 RET
 
-0x2000:
+; data labels don't have to be page-aligned
 hello:
 dstr 'Hello'
 world:
 dstr 'world'
 welcome:
 dstr 'Welcome to Duncatron v1.0'
+interupt_text:
+dstr 'Interupt called!'
+
+INTERUPT:
+MOV U,0x51
+mov r0r1,interupt_text
+PUSH_PC+1
+call printstr
+PUSH_PC+1
+call message
+mov U,0x52
+mov U,0x53
+RETI

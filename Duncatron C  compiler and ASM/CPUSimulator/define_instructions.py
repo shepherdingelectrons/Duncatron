@@ -342,6 +342,7 @@ def add_ALU_LOGIC():
                 valid = [a for a in range(0,256) if (a & 0b1111)==(a3|a210)]
                 changeA.append("X")
                 add_instruction(ins,pos=None,addresses=valid, microcode_lines=[FETCH0,FETCH1,changeA])
+                
 def add_ALU_ARITHMETIC():
     # A = ALU(A, out_reg):
     # 0b -  "o0" o2 o1 a3 0 a1 a0    # o0 can be set to 1 if necessary by X-signal for output to bus
@@ -443,14 +444,14 @@ def add_ALU_inc_dec():
             changeREG = ["ALUo","Ai","Fi"]
             valid=[a for a in range(0,256) if (a&0b111)==0b000] # Only need to make sure a2=0,a1=a0=0
             # B is set to 1, relies on lower 8-bit bus having suitable pull-up/down resistors! LSB could be weakly pulled down with "X" so that 0 or 1 can be set?
-            # d0 -----[10 k]----X
+            # d0 -----[1k]----X
             #      |
             #      q0 on output register (can be tri-stated)
             #
             pos=add_instruction(new_ins,pos=None,addresses=valid)
             if pos&0b1000 == 0b1000:
                 changeREG.append("X") # need to use X signal to toggle a3
-            define_microcode(pos,[FETCH0,FETCH1,["Bi"],changeREG])
+            define_microcode(pos,[FETCH0,FETCH1,["Bi","X"],changeREG]) # This uses X to pullup lower databus to 0x01
             
         elif reg=="B":
             valid=[a for a in range(0,256) if (a&0b111)==0b000] # Only need to make sure a2=0,a1=a0=0
@@ -458,9 +459,9 @@ def add_ALU_inc_dec():
             # Need to assert X signal so that a3=0
             pos=add_instruction(new_ins,pos=None,addresses=valid)#,microcode_lines=[FETCH0,FETCH1,["Ai"],["X","ALUo","Bi","Fi"]])
             if pos&0b1000 == 0b1000:
-                define_microcode(pos,[FETCH0,FETCH1,["Ai"],["X","ALUo","Bi","Fi"]])
+                define_microcode(pos,[FETCH0,FETCH1,["Ai","X"],["X","ALUo","Bi","Fi"]]) # This uses X to pullup lower databus to 0x01
             else:
-                define_microcode(pos,[FETCH0,FETCH1,["Ai"],["ALUo","Bi","Fi"]])
+                define_microcode(pos,[FETCH0,FETCH1,["Ai","X"],["ALUo","Bi","Fi"]]) # This uses X to pullup lower databus to 0x01
         else:
             setA = ["OUTen","Ai"]
             changeREG = ["ALUo","INen","Fi"]
@@ -482,7 +483,7 @@ def add_ALU_inc_dec():
                 addr = (i2<<7) | (i1<<6) | (o2<<5) | (o1<<4) | (0<<3) | (1<<2) | (0<<1) | (0<<0)
                 changeREG.append("X")
                 valid = [addr]
-                add_instruction(new_ins,pos=None,addresses=valid,microcode_lines=[FETCH0,FETCH1,["Bi"],setA,changeREG])
+                add_instruction(new_ins,pos=None,addresses=valid,microcode_lines=[FETCH0,FETCH1,["Bi","X"],setA,changeREG])
 ##            elif reg=="r5":
 ##                print("Hijacking",reg)
 ##
@@ -491,7 +492,7 @@ def add_ALU_inc_dec():
 ##                add_instruction(new_ins,pos=None,addresses=valid,microcode_lines=[FETCH0,FETCH1,["Bi"],setA,changeREG])
 ##                # Try 0b1000 (OR), then
             else:
-                add_instruction(new_ins,pos=None,addresses=valid,microcode_lines=[FETCH0,FETCH1,["Bi"],setA,changeREG])
+                add_instruction(new_ins,pos=None,addresses=valid,microcode_lines=[FETCH0,FETCH1,["Bi","X"],setA,changeREG])
        
     # DEC register:
     # 0b i2 i1 o2 o1 o0  1  1  1     # dec r0
@@ -562,12 +563,12 @@ def add_16bit_MATHS():
             # A = r0 (i0=0, X-signal asserted)
             # B = 0
             # ALU = 0b0100 (ADDC), ALU out = r0, X-signal asserted, a3=0, i0=0
-            add_instruction(new_ins,pos=None,addresses=valid,microcode_lines=[FETCH0,FETCH1,["OUTen","Ai"],["Bi"],["ALUo","INen","Fi"],["OUTen","Ai","X"],["Bi","X"],["ALUo","INen","X","Fi"]])
-            
+            add_instruction(new_ins,pos=None,addresses=valid,microcode_lines=[FETCH0,FETCH1,["OUTen","Ai"],["Bi","X"],["ALUo","INen","Fi"],["OUTen","Ai","X"],["Bi"],["ALUo","INen","X","Fi"]])
         
 def add_16bit_MOV():
     # 0b i2 i1 o2 o1 o0 i0 x x
     word_Pairs=["AB","r0r1","r2r3","r4r5"]
+    
     for p_indexin,pair_in in enumerate(word_Pairs):
         reg_i = p_indexin*2
         for p_indexout,pair_out in enumerate(word_Pairs):
@@ -733,9 +734,11 @@ def add_8bit_MOV_misc():
         if reg_out=="A":
 #            add_instruction("PUSH "+reg_out+"-2",pos=None,addresses=valid,microcode_lines=[FETCH0,FETCH1,["SPdec"],["SPdec"],["SPdec"],["SPo","MARi","SPinc"],[readREG,"Ri","SPinc"],["SPinc"]])
 #            add_instruction("POP "+reg_out+"-2",pos=None, addresses=valid,microcode_lines=[FETCH0,FETCH1,["SPdec"],["SPo","MARi"],["Ro","Ai","SPinc"]])
-            push8bit = add_instruction("PUSH 0x@@",pos=None,addresses=[a for a in range(0,256)],microcode_lines=[FETCH0,FETCH1,["SPdec"],["PCo","MARi"],["Ro","PCinc","T_EN"],["SPo","MARi"],["Ri","T_EN","T_IO"]])
-            add_instruction("SPARE",pos=None,addresses=[a for a in range(0,256)],microcode_lines=[FETCH0,FETCH1,["SPdec","PCo","MARi"],["Ro","PCinc","T_EN",],["SPo","MARi"]])
-            print("PUSH 0x@@ in at:",push8bit)
+            push8bit = add_instruction("PUSH 0x@@",pos=None,addresses=[a for a in range(0,256)],microcode_lines=[FETCH0,FETCH1,["SPdec","PCo","MARi"],["Ro","PCinc","T_EN"],["SPo","MARi"],["Ri","T_EN","T_IO"]])
+            #spare = add_instruction("SPARE",pos=None,addresses=[a for a in range(0,256)],microcode_lines=[FETCH0,FETCH1])
+            add_instruction("POP T",pos=None,addresses=[a for a in range(0,256)],microcode_lines=[FETCH0,FETCH1,["SPo","MARi"],["Ro","T_EN","SPinc"]]) # pop return address into T register. 
+            #print("spare at:",spare)
+    
 def add_FLAGs():
     #           PUSH F
 #           POP F
@@ -756,8 +759,8 @@ def add_JMPs():
     push=add_instruction("PUSH_PC+1",pos=first_slot,microcode_lines=[FETCH0,FETCH1,["SPdec"],["SPo","MARi"],["PCo","Ri","SPdec","T_EN","T_HL"],["SPo","MARi"],["T_EN","T_IO","Ri"]])
                                                                                                                                             # Output 0x@@ (transfer reg) --> low bus
                                                                                     # RAM --> Transfer reg (via low bus)... then: Transfer reg --> High bus OUTPUT 
-    pos=add_instruction("INT~",pos=push+1,microcode_lines=[FETCH0,FETCH1,["X","MARi"],["Ro","T_EN"],["MARi"],["Ro","T_EN","T_HL","T_IO","PCi"]])
-    # INT~, the tilde tells the instruction to add a padding byte to the instruction so that 
+    pos=add_instruction("INT~",pos=push+1,microcode_lines=[FETCH0,FETCH1,["MARi"],["Ro","T_EN"],["MARi","X"],["Ro","T_EN","T_HL","T_IO","PCi"]])
+    # INT~, the tilde tells the instruction to add a padding byte to the instruction so that (what? RETI behaves correctly?) 
     print("PUSH PC+1 at:",push,hex(push),bin(push)) 
     print("INT at:",pos,hex(pos),bin(pos))
     
@@ -797,6 +800,7 @@ def add_JMPs():
     no_call=[FETCH0,FETCH1,["SPinc","PCinc"],["SPinc","PCinc"]] # Didn't call function so need to undo effect of pushing the return address onto the stack and need to increment PC
     ##call_code=[FETCH0,FETCH1,["PCo","MARi"],["Ro","T_EN"],["X","T_EN","T_HL","T_IO","PCi"]] #[PC]=T_reg, PC = [PC]:00
     call_code=[FETCH0,FETCH1,["PCo","MARi"],["Ro","T_EN","PCinc"],["PCo","MARi"],["Ro","T_HL","T_IO","T_EN","PCi"]] # PC=[PC][PC+1]
+    
      #         PC PC+1
      # CALL_OP:HI:LO
      
@@ -812,8 +816,9 @@ def add_JMPs():
 
         for condition in range(0,4):
             define_microcode(call_pos,call_code if jsearch in ZC[condition] else no_call,ZC=condition)
-        
-    add_instruction("RET",pos=None,addresses=valid,microcode_lines=[FETCH0,FETCH1,["SPo","MARi"],["Ro","T_EN","SPinc"],["SPo","MARi"],["Ro","T_EN","T_HL","T_IO","PCi","SPinc"],["PCinc"],["PCinc"]])
+     
+    #add_instruction("RET",pos=None,addresses=valid,microcode_lines=[FETCH0,FETCH1,["SPo","MARi"],["Ro","T_EN","SPinc"],["SPo","MARi"],["Ro","T_EN","T_HL","T_IO","PCi","SPinc"],["PCinc"],["PCinc"]])
+    add_instruction("RET",pos=None,addresses=valid,microcode_lines=[FETCH0,FETCH1,["SPo","MARi"],["Ro","T_EN","T_HL","T_IO","PCi","SPinc"],["PCinc"],["PCinc"],["PCinc"]])
 
 def add_UART():
     # add UART_out to reg_IN
@@ -893,13 +898,16 @@ define_signal("PCi") #
 define_signal("Ao",True)
 define_signal("OUTen",True) # enable register-out demux
 define_signal("INen",True) # enable register-in demux
-define_signal("X",True) # X-signal, does various XOR manipulation of o0, a3 and i0
+define_signal("X") # X-signal, does various XOR manipulation of o0, a3 and i0
 define_signal("Fo", True) # FLAG register out
 define_signal("HALT")
 define_signal("SPo",True)
 
 FETCH0 = ["PCo","MARi"]
 FETCH1 = ["Ro","Ii","PCinc"]
+
+# Notes:
+# Need to handle T_HL and T_IO as active lows so are compatible with PCB
 
 #index in instructions is opcode machine code
 # ' ' indicates the end of the instruction and start of (optional) parameters
@@ -943,7 +951,8 @@ add_8bit_MOV()
 
 # OUT_EN in the zeroth position is used to clear the "in interrupt" function.
 ret_valid = [x for x in range(0,256) if x&0b00111000==0b000000]
-add_instruction("RETI",pos=None,addresses=ret_valid,microcode_lines=[FETCH0,FETCH1,["SPo","MARi"],["Ro","T_EN","SPinc"],["SPo","MARi"],["Ro","T_EN","T_HL","T_IO","PCi","SPinc"],["PCinc"],["PCinc","OUTen"]])
+add_instruction("RETI",pos=None,addresses=ret_valid,microcode_lines=[FETCH0,FETCH1,["SPo","MARi"],["Ro","T_EN","SPinc"],["SPo","MARi"],["Ro","T_EN","T_HL","T_IO","PCi","SPinc"],["PCinc","OUTen"]])
+#add_instruction("RETI",pos=None,addresses=ret_valid,microcode_lines=[FETCH0,FETCH1,["SPo","MARi"],["Ro","T_EN","T_HL","T_IO","PCi","SPinc"],["PCinc","OUTen"]])
 
 add_8bit_MOV_misc()
 
@@ -958,7 +967,7 @@ add_misc()
 
 instruction_str = ""
 
-output_type = 0 # 0 = No output, 1 = customasm CPU definition, 2 = instruction property table, 3 = instruction_str for ASM interpreter
+output_type = 0# 0 = No output, 1 = customasm CPU definition, 2 = instruction property table, 3 = instruction_str for ASM interpreter
 headers=["Instruction","Opcode","PC change","Register change"]
 instruction_table = []
 
