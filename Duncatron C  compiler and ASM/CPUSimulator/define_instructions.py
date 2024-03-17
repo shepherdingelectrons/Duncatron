@@ -879,8 +879,8 @@ define_signal("ALUo",True)#1
 define_signal("Ii",True) # 2
 define_signal("PCo",True) #3
 define_signal("PCinc")#4
-define_signal("MARi") # 5
-define_signal("Ro") # 6 - RAM out, memory read
+define_signal("MARi",True) # 5
+define_signal("Ro",True) # 6 - RAM out, memory read
 define_signal("MC_reset") # 7 - microcode counter reset
 
 # Second set of control signals lets us interface with the higher 8 bits of 16-bit bus, write to memory, set flags and use the stack

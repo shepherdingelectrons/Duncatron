@@ -87,7 +87,7 @@ POP T
 RET
 
 ;**************** message*********
-0x1000:
+
 message:
 mov r0r1,hello
 push_PC+1
