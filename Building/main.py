@@ -69,7 +69,7 @@ class Signal: # Signal is basically a Pin object but with an associated active_l
 
 # Setup timers and pins here
 
-def off(verbose=True, invert=False):
+def off(verbose=True, invert=False, report=False):
 ##    databus.setasinput()
 ##    databusHIGH.setasinput()
 
@@ -77,12 +77,16 @@ def off(verbose=True, invert=False):
     if verbose: print("CLK: OFF")
     signaln=0
     for s in SignalList:
-        if invert:
-            s.on()
+        if report:
+            if (s.value()==0 and s.active_low) or (s.value()==1 and s.active_low==False):
+                print(s.label,": ON!")
         else:
-            s.off()
-            if verbose: print(signaln,s.label,": OFF")
-        signaln+=1
+            if invert:
+                s.on()
+            else:
+                s.off()
+                if verbose: print(signaln,s.label,": OFF")
+            signaln+=1
     if verbose: print(signaln,"control signals switched off")
         
 
@@ -183,107 +187,208 @@ def flash(signals):
             s.off()
         microwait(200000)
 
-def execute(asm_line,wait=0.5,verbose=True):
-    machine_lang = asm(asm_line)
-    if machine_lang==None:
-        print("could not parse asm")
-        return
-    opcode = machine_lang[0]
-    print("Opcode=",opcode)
-    for tick in range(0,8):
-        CLK.off()
-        Z = 0
-        C = 1 # no carry
-        INS = opcode
+def run(start_addr,end_addr,period=0.5,verb=False):
+    execute(None,wait=period,verbose=verb,realmemory=True,start=start_addr,end=end_addr)
 
-        address = (Z<<12)|(C<<11)|(tick<<8)|INS
-        control_byte0 = control0[address]
-        control_byte1 = control1[address]
-        control_byte2 = control2[address]
-        
-        for s in range(0,24):
-            signal_name = SignalList[s].label
-            s_mask = s&7
-            # 0 1 2 3 4 5 6 7
-            # 8 9 A B C D E F
+def executeASM(asm_line,wait=0.5,verbose=True):
+    execute(asm_line,wait,verbose,realmemory=False)
             
-            if s<8:                
-                bit = 1 if control_byte0&(1<<s_mask) else 0
-            elif s<16:
-                bit = 1 if control_byte1&(1<<s_mask) else 0
-            else:
-                bit = 1 if control_byte2&(1<<s_mask) else 0
-        
-            SignalList[s].value(bit)
-            if verbose:
-                if (SignalList[s].active_low and bit==0) or (SignalList[s].active_low==False and bit==1):
-                    if signal_name!="T_HL" and signal_name!="T_IO":                    
-                        print(tick,"Signal",signal_name,"active")
-            if signal_name=="MC_RESET" and bit==1:
-                off(verbose=False)
-                return
-        I2 = 1 if INS&(1<<2) else 0
-        I3 = 1 if INS&(1<<3) else 0
-        a3_o0 = I3 ^ X.value() # XOR
-        in0 = I2 ^ X.value() # XOR
+def execute(asm_line,wait=0.5,verbose=True,realmemory=False,start=0,end=0):
 
-        alu_addr = INS&(0b111) | (a3_o0)<<3
-        print("ALU_ADDR:",alu_addr)
-        microwait(wait*1E6)
-        CLK.on()
-        microwait(wait*1E6)
+    PC = 0
+    MAR = 0
+    
+    if realmemory==False:
+        machine_lang = asm(asm_line)
+        print(machine_lang)
+        if machine_lang==None:
+            print("could not parse asm")
+            return
+        opcode = machine_lang[PC]
+        print("Opcode=",opcode)
+    else:
+        PC=start
+        opcode = readMEM(PC)[0]
 
+    CLK.off()
+    # Skipping FETCH instruction for NOW
+    #setI(machine_lang[0]) # set address
+
+    loop_condition = True
+    while loop_condition:
+        loop_condition = realmemory
+
+        for tick in range(0,8):
+            Z = 0
+            C = 1 # no carry
+            INS = opcode
+
+            uart_output = False # Debug flag for piping output to UART
+
+            address = (Z<<12)|(C<<11)|(tick<<8)|INS
+            control_byte0 = control0[address]
+            control_byte1 = control1[address]
+            control_byte2 = control2[address]
+
+            MC_RESET = False
+            new_INS = False
+            
+            for s in range(0,24):
+                signal_name = SignalList[s].label
+                s_mask = s&7
+                # 0 1 2 3 4 5 6 7
+                # 8 9 A B C D E F
+                
+                if s<8:                
+                    bit = 1 if control_byte0&(1<<s_mask) else 0
+                elif s<16:
+                    bit = 1 if control_byte1&(1<<s_mask) else 0
+                else:
+                    bit = 1 if control_byte2&(1<<s_mask) else 0
+
+                override = False
+
+                if signal_name=="MARi" and bit==0:
+                    MAR=PC
+                    #print("Setting MAR to PC",MAR)
+                    if realmemory:
+                        writeMAR(PC)
+                        override=True
+
+                if signal_name=="PCinc" and bit==1:
+                    PC+=1
+                    #print("INC PC to:",PC)
+
+                if signal_name=="Ii" and bit==0:
+                    #print("loading new INS")
+                    new_INS = True
+                
+                if signal_name=="Ro" and bit==0 and realmemory==False:                
+                    print("Ro sending", machine_lang[MAR])
+                    uart.writechar(machine_lang[MAR])
+                    Uin.on()
+                    override=True # Send char by UART instead of MEM
+                    
+                if not override:
+                    SignalList[s].value(bit)
+                    
+                if verbose:
+                    if (SignalList[s].active_low and bit==0) or (SignalList[s].active_low==False and bit==1):
+                        if signal_name!="T_HL" and signal_name!="T_IO":                    
+                            if verbose: print(PC,MAR,tick,INS,"Signal",signal_name,"active")
+                if signal_name=="MC_RESET" and bit==1:
+                    #off(verbose=False)
+                    MC_RESET = True
+
+                # DEBUG: pipe Ai to UART:
+                if signal_name=="Ai" and bit==0:
+                    Uout.on()
+                    #print("outputing Ai to UART")
+                    uart_output = True
+                # end of signal for loop
+            # tick for loop     
+            I2 = 1 if INS&(1<<2) else 0
+            I3 = 1 if INS&(1<<3) else 0
+            a3_o0 = I3 ^ X.value() # XOR
+            in0 = I2 ^ X.value() # XOR
+
+            alu_addr = INS&(0b111) | (a3_o0)<<3
+            #print("ALU_ADDR:",alu_addr)
+            microwait(wait*1E6)
+            CLK.on()
+            microwait(wait*1E6)
+            CLK.off()
+            microwait(1E4)
+            Uout.off()
+            Uin.off()
+            off(verbose=False)
+            
+            if uart_output:
+                n = uart.any()
+                if n==1:
+                    char = uart.read()[0]
+                    print("A reg:",char,hex(char),bin(char),chr(char))
+                else:
+                    print(n,"is not 1!",uart.read())
+            
+            uart_output=False
+            if MC_RESET==True:
+                #print("MC_RESET is true")
+                break
+            if new_INS==True:
+                if realmemory:
+                    microwait(1E5)
+                    opcode = readMEM(MAR)[0]
+                    INS = opcode
+                    #print("PC:",PC,"MAR:",MAR,"OPCODE:",opcode)
+        # while LOOP
+        if realmemory and PC>=end:
+            loop_condition=False
+
+    
 def OpenControlFile(filename):
     f = open(filename, "rb")
     readarray = f.read()
     f.close()
     return readarray
 
-def testUART():
+def testUART(char=None):
     Uin.on() # clear RX_READY
     Uin.off() # switch off to allow RX_READY to be set
     uart.read() # clear buffer
 
-    for i in range(0,256):
-        print("Sending",i)
+    errors = [0]*8
+    
+    for c in range(0,256):
+        if char==None:
+            i = c
+        else:
+            i = char
+            
+        #print("Sending",i)
         uart.writechar(i)
-        
-        microwait(1E5)        
+        microwait(1E3)        
         
         Uin.on() # for this purpose puts out to bus
         Uout.on() # gets ready to TX back from databus
-        microwait(1E4)
+        microwait(1E3)
         CLK.on() # Uout is pulled high (active) on testing circuit
-        microwait(1E5)
+        microwait(1E3)
         CLK.off()
         Uin.off()
         Uout.off()
         
-        microwait(1E4)
+        microwait(1E3)
         n = uart.any()
         
         if n==1:
             c = uart.read()[0]
-            print("Got:",c)
-            if c!=i:
-                print("ERROR mismatch:",i,c)
+            if c==i:
+                print(hex(i),": YES  :",bin(c))
+            else:
+                print(hex(i),": ERROR:",bin(c),"(expected:",bin(i),")")
+                for bit in range(0,8):
+                    bitshift = 1<<bit
+                    if c&bitshift!=i&bitshift:
+                        errors[bit]+=1
         if n==0:
             print("not received!")
         if n>1:
             print("Multiple chars:",uart.read())
+    print(errors)
 
 def writeT(value):
-    # Reads from 299 in T register from low databus
+    # Writes from 299 in T register from low databus
     T_IO.on() # T_IO = 0 (means INPUT)
     T_EN.on() # T_EN = 1 (ENABLE)
     T_HL.on() # T_HL = 0 (LOW bus)
 
     uart.writechar(value&0xff)
-    microwait(1E5)
+    microwait(1E3)
     Uin.on()
-    microwait(1E5)
+    microwait(1E2)
     CLK.on()
-    microwait(1E5)
+    microwait(1E2)
     CLK.off()
     Uin.off()
 
@@ -355,8 +460,9 @@ def writeMAR(address):
     high = (address>>8)&0xFF
 
     writeT(high)
+    
     uart.writechar(low)
-    microwait(1E5)
+    microwait(1E3) # sending UART char
 
     T_IO.off() # Read from T onto HIGH
     T_EN.on()
@@ -364,47 +470,100 @@ def writeMAR(address):
     
     Uin.on()
     MARi.on()
-    microwait(1E5)
+    microwait(1E3)
     CLK.on()
-    microwait(1E5)
+    microwait(1E3)
     CLK.off()
     Uin.off()
     MARi.off()
     T_EN.off()
 
-def readMEM(address):
+def readMEM(address, verbose=False):
     writeMAR(address)
     Ro.on()
-    microwait(1E5)
-    Uout.on() 
-    microwait(1E6)
+    Uout.on()
+
+    #DEBUG:
+    # Writes from 299 in T register from low databus
+##    T_IO.on() # T_IO = 0 (means INPUT)
+##    T_EN.on() # T_EN = 1 (ENABLE)
+##    T_HL.on() # T_HL = 0 (LOW bus)
+
+    microwait(1E2)
     CLK.on()
-    microwait(1E5)
+    microwait(1E2)
     CLK.off()
-    microwait(1E5)
+    microwait(1E3) # Uart output time
     Uout.off()
     Ro.off()
+
+##    T_IO.off()
+##    T_EN.off()
+##    T_HL.off()
+##    
+##    ## Reads from T register into MARi low
+##    readT()
+    
     
     if uart.any()>0:
         chars = uart.read()
-        for c in chars:
-            print(hex(c),int(c),chr(c))
-    else:
+        if verbose:
+            for c in chars:
+                print(hex(c),int(c),chr(c))
+        return chars
+    elif verbose:
         print("nothing!")
+        return None
 
 def writeMEM(address, data):
     writeMAR(address)
     uart.writechar(data)
     Ri.on()
     Uin.on()
-    microwait(2E5)
+    microwait(1E3) # sending UART char
     CLK.on()
-    microwait(1E5)
+    microwait(1E2)
     CLK.off()
-    microwait(1E5)
+    microwait(1E2)
     Uin.off()
     Ri.off()
 
+def setI(data):
+    uart.writechar(data)
+    Ii.on()
+    Uin.on()
+    microwait(1E3)
+    CLK.on()
+    CLK.off()
+    Ii.off()
+    Uin.off()
+    
+def testMEM(write=False,seed=69):
+    import random
+    random.seed(seed)
+    if write==True:
+        print("Writing")
+        for a in range(0,0x10000):
+            db = random.randint(0,256)
+            writeMEM(a,db)
+    print("Reading")
+    random.seed(seed)
+    mismatches = 0
+    memory_map = 0x81
+    
+    for a in range(0,0x10000):
+        db = random.randint(0,256)
+        read = readMEM(a)
+        
+        if read==None:
+            print("Nothing returned at address:",hex(a))
+        elif len(read)>1:
+            print("Multiple characters received at address:",hex(a))
+        elif read[0]!=db and db!=256:
+            if a>>8!=memory_map:
+                print("Mismatch at address:",hex(a),read[0],"!=",db)
+                mismatches+=1        
+    print("Total errors:",mismatches)       
 micros = pyb.Timer(2, prescaler=83, period=0x3fffffff)
 
 CLK = Signal("CLK","Y3", Pin.OUT_PP, active_low = False)
@@ -440,8 +599,8 @@ SPo = Signal("SPo","Y9", Pin.OUT_PP, active_low=True)
 # so remember to remove before adding that!
 
 Bo = Signal("Bo","Y10", Pin.OUT_PP, active_low=True)
-Uin = Signal("Uin","Y11", Pin.OUT_PP, active_low=True)
-Uout = Signal("Uout","Y12", Pin.OUT_PP, active_low=False)
+Uin = Signal("Uin","Y11", Pin.OUT_PP, active_low=True) # Green - right and middle
+Uout = Signal("Uout","Y12", Pin.OUT_PP, active_low=False) # Blue- left and top
 #RX_READY = Pin("Y12", Pin.IN, Pin.PULL_DOWN)
 
 from pyb import UART
