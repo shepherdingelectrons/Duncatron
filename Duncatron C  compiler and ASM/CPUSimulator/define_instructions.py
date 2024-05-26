@@ -884,9 +884,9 @@ define_signal("Ro",True) # 6 - RAM out, memory read
 define_signal("MC_reset") # 7 - microcode counter reset
 
 # Second set of control signals lets us interface with the higher 8 bits of 16-bit bus, write to memory, set flags and use the stack
-define_signal("T_HL") # 8 # Transfer register High/Low.  Need to check these all make sense
-define_signal("T_IO") # 9 # Transfer register In/Out.  Need to check these all make sense T_IO = LOW means INPUT, T_IO = HIGH means OUTPUT
-define_signal("T_EN") # 10 # Transfer register enable.
+define_signal("T_HL",active_low=False) # 8 # Transfer register High/Low.  Need to check these all make sense
+define_signal("T_IO",active_low=False) # 9 # Transfer register In/Out.  Need to check these all make sense T_IO = LOW means INPUT, T_IO = HIGH means OUTPUT
+define_signal("T_EN",active_low=False) # 10 # Transfer register enable.
 define_signal("Ri")   # 11 # Memory write
 define_signal("Fi",True)    # 12
 define_signal("SPdec")# 13

@@ -88,54 +88,6 @@ def off(verbose=True, invert=False, report=False):
                 if verbose: print(signaln,s.label,": OFF")
             signaln+=1
     if verbose: print(signaln,"control signals switched off")
-        
-
-def toggleCLK(setsignals=None):
-   # SPEED
-## Assumes clock is OFF to begin with
-## speed is clock speed in Hz
-    
-    if CLK.value()!=0:
-        print("Error: expect CLK to be low")
-
-    period = 1E6/SPEED # clock period in microseconds
-    
-    if setsignals: # We have to hope the clock isn't too fast otherwise
-    # we can't set all the signals in time before the 0--> transition!
-        for s in setsignals:
-            s.on()
-        
-    microwait(period/2)
-    CLK.on()
-    microwait(period/2)
-    
-    # Now turn everything off
-    if setsignals: # Turn all signals off
-        for s in setsignals:
-            s.off()
-
-    CLK.off()
-    
-    microwait(1000) # wait for clock to settle off
-    microwait(period/2)
-
-def writedata(data):
-    uart.writechar(data&0xff)
-    microwait(1000) # we have to wait for the micropython uart
-    toggleCLK([RI,RXout])
-
-def readdata():
-    toggleCLK([RO,TXout])
-    microwait(1000) # we have to wait for the micropython
-    # uart code to catch up with the hardware...
-    n = uart.any()
-    if n==0:
-        print("ERROR NO UART RECEIVED")
-        return
-    if n>1:
-        print("warning, multiple values on RX line")
-    cs = uart.read()[n-1] # get last character 
-    print(chr(cs),cs,hex(cs))
 
 def test_signals(waittime=0.1,verbose=True,tick=False):
     #waittime is in seconds
@@ -153,50 +105,52 @@ def test_signals(waittime=0.1,verbose=True,tick=False):
             microwait(period)
         loop_condition= tick
 
-def tick(ticktime=0.1):
-    period = ticktime*1000000
-    while True:
-        CLK.on()
-        microwait(period)
-        CLK.off()
-        microwait(period)
+def program(filename="test.asm"):
+    try:
+        with open(filename) as file:
+            my_program = [line.rstrip() for line in file]
+    except OSError:
+        print("file not found!", filename)
+        return
+                
+    PC = 0
+    
+    for line_num,asm_line in enumerate(my_program):
+        printstr=hex4(PC)+": "#"{0:#0{1}x} : ".format(PC,6)
+        machine_lang = asm(asm_line)
+        if machine_lang==None:
+            print("could not parse asm:",asm_line,"on line:",line_num)
+            return
+        #print(asm_line)
+        for byte in machine_lang:
+            if byte!=None:
+                writeMEM(PC,byte)
+                PC+=1
+                printstr += hex2(byte)+" "#"{0:#0{1}x} ".format(byte,4) #hex(byte)+" "
+                #print(byte,hex(byte),bin(byte),chr(byte))
+        printstr+="; "+asm_line
+        print(printstr)
+    print("Program written, next PC position=",PC,"("+hex4(PC)+")")
+    return
 
-def mock_working(waittime=0.1):
-    import random
+def hex2(num):
+    return "{0:#0{1}x}".format(num,4)
 
-    period = waittime *1000000
-    probn = 7
-    while True:
-        for s in SignalList:
-            rand = random.randint(0,probn)
-            if rand==0:
-                s.on()
-        microwait(period)
-        CLK.on()
-        microwait(period)
-        off(verbose=False)
-        CLK.off()
+def hex4(num):
+    return "{0:#0{1}x}".format(num,6)
 
-def flash(signals):
-    while True:
-        for s in signals:
-            s.on()
-        microwait(200000)
-            
-        for s in signals:
-            s.off()
-        microwait(200000)
+def run(start_addr,end_addr,period=0.5,looptozero=True,verb=False):
+    execute(None,wait=period,verbose=verb,realmemory=True,start=start_addr,end=end_addr,loop=looptozero)
 
-def run(start_addr,end_addr,period=0.5,verb=False):
-    execute(None,wait=period,verbose=verb,realmemory=True,start=start_addr,end=end_addr)
-
-def executeASM(asm_line,wait=0.5,verbose=True):
+def executeINS(asm_line,wait=0.5,verbose=True):
     execute(asm_line,wait,verbose,realmemory=False)
             
-def execute(asm_line,wait=0.5,verbose=True,realmemory=False,start=0,end=0):
+def execute(asm_line,wait=0.5,verbose=True,realmemory=False,start=0,end=0,loop=True):
 
     PC = 0
     MAR = 0
+
+    test_uart = False
     
     if realmemory==False:
         machine_lang = asm(asm_line)
@@ -208,7 +162,11 @@ def execute(asm_line,wait=0.5,verbose=True,realmemory=False,start=0,end=0):
         print("Opcode=",opcode)
     else:
         PC=start
-        opcode = readMEM(PC)[0]
+        if test_uart:
+            opcode = 19 # mov U,0x??
+            setI(opcode)
+        else:
+            opcode = readMEM(PC)[0]
 
     CLK.off()
     # Skipping FETCH instruction for NOW
@@ -264,7 +222,7 @@ def execute(asm_line,wait=0.5,verbose=True,realmemory=False,start=0,end=0):
                     new_INS = True
                 
                 if signal_name=="Ro" and bit==0 and realmemory==False:                
-                    print("Ro sending", machine_lang[MAR])
+                    #print("Ro sending", machine_lang[MAR])
                     uart.writechar(machine_lang[MAR])
                     Uin.on()
                     override=True # Send char by UART instead of MEM
@@ -274,8 +232,12 @@ def execute(asm_line,wait=0.5,verbose=True,realmemory=False,start=0,end=0):
                     
                 if verbose:
                     if (SignalList[s].active_low and bit==0) or (SignalList[s].active_low==False and bit==1):
-                        if signal_name!="T_HL" and signal_name!="T_IO":                    
-                            if verbose: print(PC,MAR,tick,INS,"Signal",signal_name,"active")
+##                        if signal_name=="T_HL" or signal_name=="T_IO":
+##                            signal_value=1
+##                            if SignalList[s].active_low:
+##                                signal_value=0
+##                            print(signal_name,"=",signal_value)
+                        if verbose: print("PC="+hex4(PC),"MAR="+hex4(MAR),"tick="+str(tick),"Ireg="+str(INS),"Signal",signal_name,"active")
                 if signal_name=="MC_RESET" and bit==1:
                     #off(verbose=False)
                     MC_RESET = True
@@ -317,14 +279,20 @@ def execute(asm_line,wait=0.5,verbose=True,realmemory=False,start=0,end=0):
                 break
             if new_INS==True:
                 if realmemory:
-                    microwait(1E5)
-                    opcode = readMEM(MAR)[0]
+                    if test_uart:
+                        opcode=19 # mov U,0x??
+                    else:
+                        microwait(1E5)
+                        opcode = readMEM(MAR)[0]
                     INS = opcode
                     #print("PC:",PC,"MAR:",MAR,"OPCODE:",opcode)
+            print("-"*20)
         # while LOOP
-        if realmemory and PC>=end:
-            loop_condition=False
-
+        if realmemory and PC>=end-1:
+            if loop:
+                PC=0
+            else:
+                loop_condition=False
     
 def OpenControlFile(filename):
     f = open(filename, "rb")
@@ -378,10 +346,10 @@ def testUART(char=None):
     print(errors)
 
 def writeT(value):
-    # Writes from 299 in T register from low databus
-    T_IO.on() # T_IO = 0 (means INPUT)
+    # Writes to 299 in T register from low databus
+    #T_IO.on() # T_IO = 0 (means INPUT)
     T_EN.on() # T_EN = 1 (ENABLE)
-    T_HL.on() # T_HL = 0 (LOW bus)
+    #T_HL.on() # T_HL = 0 (LOW bus)
 
     uart.writechar(value&0xff)
     microwait(1E3)
@@ -392,15 +360,15 @@ def writeT(value):
     CLK.off()
     Uin.off()
 
-    T_IO.off()
+    #T_IO.off()
     T_EN.off()
-    T_HL.off()
+    #T_HL.off()
 
 def writeTHIGH(value):
     # Writes to 299 in T register from HIGH databus
-    T_IO.on() # T_IO = 0 (means INPUT)
+    #T_IO.on() # T_IO = 0 (means INPUT)
     T_EN.on() # T_EN = 1 (ENABLE)
-    T_HL.off() # T_HL = 1 (HIGH bus)
+    T_HL.on() # T_HL = 1 (HIGH bus)
 
     uart.writechar(value&0xff)
     microwait(1E5)
@@ -411,15 +379,15 @@ def writeTHIGH(value):
     CLK.off()
     Uin.off()
     
-    T_IO.off()
+    #T_IO.off()
     T_EN.off()
     T_HL.off()
 
 def readT():
     # Read from 299 in T register onto low databus
-    T_IO.off() # T_IO = 1 (means OUTPUT)
+    T_IO.on() # T_IO = 1 (means OUTPUT)
     T_EN.on() # T_EN = 1 (ENABLE)
-    T_HL.on() # T_HL = 0 (LOW bus)
+    #T_HL.on() # T_HL = 0 (LOW bus)
 
     MARi.on()
     microwait(1E5)
@@ -430,13 +398,13 @@ def readT():
 
     T_IO.off()
     T_EN.off()
-    T_HL.off()
+    #T_HL.off()
     
 def readTHIGH():
     # Read from 299 in T register onto high databus
-    T_IO.off() # T_IO = 1 (means OUTPUT)
+    T_IO.on() # T_IO = 1 (means OUTPUT)
     T_EN.on() # T_EN = 1 (ENABLE)
-    T_HL.off() # T_HL = 1 (HIGH bus)
+    T_HL.on() # T_HL = 1 (HIGH bus)
 
     MARi.on()
     microwait(1E5)
@@ -464,9 +432,9 @@ def writeMAR(address):
     uart.writechar(low)
     microwait(1E3) # sending UART char
 
-    T_IO.off() # Read from T onto HIGH
+    T_IO.on() # Read from T onto HIGH
     T_EN.on()
-    T_HL.off()
+    T_HL.on()
     
     Uin.on()
     MARi.on()
@@ -476,7 +444,9 @@ def writeMAR(address):
     CLK.off()
     Uin.off()
     MARi.off()
+    T_IO.off()
     T_EN.off()
+    T_HL.off()
 
 def readMEM(address, verbose=False):
     writeMAR(address)
@@ -577,8 +547,8 @@ MARi = Signal("MARi","X9", Pin.OUT_PP, active_low=True)
 Ro = Signal("Ro","X10", Pin.OUT_PP, active_low=True)
 MC_RESET = Signal("MC_RESET","X11", Pin.OUT_PP, active_low=False)
 
-T_HL = Signal("T_HL","X12", Pin.OUT_PP, active_low=True)
-T_IO = Signal("T_IO","X17", Pin.OUT_PP, active_low=True)
+T_HL = Signal("T_HL","X12", Pin.OUT_PP, active_low=False)
+T_IO = Signal("T_IO","X17", Pin.OUT_PP, active_low=False)
 T_EN = Signal("T_EN","X18", Pin.OUT_PP, active_low=False)
 Ri = Signal("Ri","X19", Pin.OUT_PP, active_low=False)
 Fi = Signal("Fi","X20", Pin.OUT_PP, active_low=True)
@@ -598,7 +568,7 @@ SPo = Signal("SPo","Y9", Pin.OUT_PP, active_low=True)
 # Bo is just included for convenience here - it is generated by the register module
 # so remember to remove before adding that!
 
-Bo = Signal("Bo","Y10", Pin.OUT_PP, active_low=True)
+#Bo = Signal("Bo","Y10", Pin.OUT_PP, active_low=True)
 Uin = Signal("Uin","Y11", Pin.OUT_PP, active_low=True) # Green - right and middle
 Uout = Signal("Uout","Y12", Pin.OUT_PP, active_low=False) # Blue- left and top
 #RX_READY = Pin("Y12", Pin.IN, Pin.PULL_DOWN)
@@ -610,11 +580,10 @@ uart = UART(6,38400) # https://docs.micropython.orrg/en/latest/library/pyb.UART.
 # or uart.write('A')
 # or uart.writechar(c))
 # or setDatabus(c)
-
    
 off()
 uart.read() # clear uart buffer
-test_signals()
+test_signals(waittime=0.05)
 off(invert=True)
 microwait(1E6)
 off()
