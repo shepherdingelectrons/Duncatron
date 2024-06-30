@@ -105,7 +105,21 @@ def test_signals(waittime=0.1,verbose=True,tick=False):
             microwait(period)
         loop_condition= tick
 
+def burnBIN(binfilename="test.bin"):
+    f = open(binfilename,"rb")
+    data = f.read()
+    f.close
+
+    PC = 0
+    size=len(data)
+    for byte in data:
+        writeMEM(PC,byte)
+        PC+=1
+        print(hex(byte))
+    print("Binary file",binfilename,"written, total bytes="+str(size))
+        
 def program(filename="test.asm"):
+    off(verbose=False)
     try:
         with open(filename) as file:
             my_program = [line.rstrip() for line in file]
@@ -117,6 +131,10 @@ def program(filename="test.asm"):
     
     for line_num,asm_line in enumerate(my_program):
         printstr=hex4(PC)+": "#"{0:#0{1}x} : ".format(PC,6)
+        if ";" in asm_line:
+            asm_line=asm_line.split(";")[0]
+        asm_line=asm_line.strip()
+        
         machine_lang = asm(asm_line)
         if machine_lang==None:
             print("could not parse asm:",asm_line,"on line:",line_num)
@@ -139,13 +157,14 @@ def hex2(num):
 def hex4(num):
     return "{0:#0{1}x}".format(num,6)
 
-def run(start_addr,end_addr,period=0.5,looptozero=True,verb=False):
-    execute(None,wait=period,verbose=verb,realmemory=True,start=start_addr,end=end_addr,loop=looptozero)
+def run(period=0.0,verb=False):
+    off(verbose=False)
+    execute(None,wait=period,verbose=verb,realmemory=True,start=0,end=0,loop=False)
 
 def executeINS(asm_line,wait=0.5,verbose=True):
     execute(asm_line,wait,verbose,realmemory=False)
             
-def execute(asm_line,wait=0.5,verbose=True,realmemory=False,start=0,end=0,loop=True):
+def execute(asm_line,wait=0.5,verbose=True,realmemory=False,start=0,end=0,loop=False):
 
     PC = 0
     MAR = 0
@@ -172,16 +191,19 @@ def execute(asm_line,wait=0.5,verbose=True,realmemory=False,start=0,end=0,loop=T
     # Skipping FETCH instruction for NOW
     #setI(machine_lang[0]) # set address
 
-    loop_condition = True
-    while loop_condition:
-        loop_condition = realmemory
-
+    #constants:
+    I_REG = 1
+    A_REG = 2
+    U_REG = 3
+    
+    while True:
+        
         for tick in range(0,8):
             Z = 0
             C = 1 # no carry
             INS = opcode
 
-            uart_output = False # Debug flag for piping output to UART
+            uart_output = 0 # Debug flag for piping output to UART
 
             address = (Z<<12)|(C<<11)|(tick<<8)|INS
             control_byte0 = control0[address]
@@ -189,7 +211,7 @@ def execute(asm_line,wait=0.5,verbose=True,realmemory=False,start=0,end=0,loop=T
             control_byte2 = control2[address]
 
             MC_RESET = False
-            new_INS = False
+            #new_INS = False
             
             for s in range(0,24):
                 signal_name = SignalList[s].label
@@ -206,20 +228,22 @@ def execute(asm_line,wait=0.5,verbose=True,realmemory=False,start=0,end=0,loop=T
 
                 override = False
 
-                if signal_name=="MARi" and bit==0:
-                    MAR=PC
-                    #print("Setting MAR to PC",MAR)
-                    if realmemory:
-                        writeMAR(PC)
-                        override=True
-
-                if signal_name=="PCinc" and bit==1:
-                    PC+=1
-                    #print("INC PC to:",PC)
+##                if signal_name=="MARi" and bit==0:
+##                    MAR=PC
+##                    #print("Setting MAR to PC",MAR)
+##                    if realmemory:
+##                        writeMAR(PC)
+##                        override=True
+##
+##                if signal_name=="PCinc" and bit==1:
+##                    PC+=1
+##                    #print("INC PC to:",PC)
 
                 if signal_name=="Ii" and bit==0:
                     #print("loading new INS")
-                    new_INS = True
+                    #Uout.on()
+                    uart_output = I_REG
+                    #new_INS = True
                 
                 if signal_name=="Ro" and bit==0 and realmemory==False:                
                     #print("Ro sending", machine_lang[MAR])
@@ -241,12 +265,16 @@ def execute(asm_line,wait=0.5,verbose=True,realmemory=False,start=0,end=0,loop=T
                 if signal_name=="MC_RESET" and bit==1:
                     #off(verbose=False)
                     MC_RESET = True
+                if signal_name=="HALT" and bit==1:
+                    return
 
+                if signal_name=="Uout" and bit==1:
+                    uart_output = U_REG
                 # DEBUG: pipe Ai to UART:
                 if signal_name=="Ai" and bit==0:
-                    Uout.on()
+                    #Uout.on()
                     #print("outputing Ai to UART")
-                    uart_output = True
+                    uart_output = A_REG
                 # end of signal for loop
             # tick for loop     
             I2 = 1 if INS&(1<<2) else 0
@@ -256,6 +284,8 @@ def execute(asm_line,wait=0.5,verbose=True,realmemory=False,start=0,end=0,loop=T
 
             alu_addr = INS&(0b111) | (a3_o0)<<3
             #print("ALU_ADDR:",alu_addr)
+            if uart_output: Uout.on()
+            
             microwait(wait*1E6)
             CLK.on()
             microwait(wait*1E6)
@@ -269,30 +299,33 @@ def execute(asm_line,wait=0.5,verbose=True,realmemory=False,start=0,end=0,loop=T
                 n = uart.any()
                 if n==1:
                     char = uart.read()[0]
-                    print("A reg:",char,hex(char),bin(char),chr(char))
+                    if uart_output==A_REG:
+                        print("A reg:",char,hex(char),bin(char),chr(char))
+                    elif uart_output==I_REG:
+                        #print("I reg:",char,hex(char),bin(char),chr(char))
+                        if realmemory:
+                            if test_uart:
+                                opcode=19 # mov U,0x??
+                            else:
+##                                microwait(1E5)
+##                                opcode = readMEM(MAR)[0]
+                                opcode = char
+                            INS = opcode
+                    elif uart_output==U_REG:
+                        print("UART output =",char)
+                    else:
+                        print("uart_output not supported!",uart_output)
                 else:
                     print(n,"is not 1!",uart.read())
             
-            uart_output=False
+            uart_output=0
             if MC_RESET==True:
                 #print("MC_RESET is true")
                 break
-            if new_INS==True:
-                if realmemory:
-                    if test_uart:
-                        opcode=19 # mov U,0x??
-                    else:
-                        microwait(1E5)
-                        opcode = readMEM(MAR)[0]
-                    INS = opcode
-                    #print("PC:",PC,"MAR:",MAR,"OPCODE:",opcode)
-            print("-"*20)
+            
+            if verbose: print("-"*20)
+        if realmemory==False: return
         # while LOOP
-        if realmemory and PC>=end-1:
-            if loop:
-                PC=0
-            else:
-                loop_condition=False
     
 def OpenControlFile(filename):
     f = open(filename, "rb")

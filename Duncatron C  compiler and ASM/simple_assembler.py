@@ -15,12 +15,14 @@ class Assembler:
     def __init__(self,filename,memory,text):
         self.lines = []
         self.memory = memory
+        self.maxPOS = 0
         self.instruction_str = CPUSimulator.define_instructions.instruction_str
         if filename!=None:
             self.read_and_clean_file(filename)
         else:
             self.read_and_clean_text(text)
-        
+
+        self.asmfilename = filename
         self.asmregex = []
         self.labels = {} # Dictionary of labels and their memory addresses
         self.labelref = []
@@ -67,8 +69,8 @@ class Assembler:
                 return False
             else:
                 label_address = self.labels[label]
-                self.memory[address] = label_address>>8
-                self.memory[address+1] = label_address & 0xFF
+                self.write_memory(address,label_address>>8)#self.memory[address] = label_address>>8
+                self.write_memory(address+1,label_address&0xFF)#self.memory[address+1] = label_address & 0xFF
         return True
     
     def assemble(self):
@@ -118,7 +120,7 @@ class Assembler:
                 
                 if opcode<256: # a normal instruction, write into memory
                     for byte in asm:
-                        self.memory[pointer]=byte
+                        self.write_memory(pointer,byte)#self.memory[pointer]=byte
                         pointer+=1
                 elif opcode==self.ADDRESS_DEFINITION: # other behaviour specified
                     if asm[1]<pointer:
@@ -142,7 +144,7 @@ class Assembler:
                         
                     newasm = self.machinecode(myline) # add dummy address as padding for now
                     for byte in newasm:
-                        self.memory[pointer]=byte
+                        self.write_memory(pointer,byte)#self.memory[pointer]=byte
                         pointer+=1
                 elif opcode == self.DATABYTES:
                     #print(asm[1],type(asm[1]))
@@ -158,15 +160,15 @@ class Assembler:
                         if int_byte==False:
                             print("Could not process data byte '"+databyte+"' at line number:",line_number)
                             return False
-                        self.memory[pointer]=int_byte
+                        self.write_memory(pointer,int_byte)#self.memory[pointer]=int_byte
                         print("Writing:",pointer,int_byte)
                         pointer+=1
                 elif opcode == self.DATASTRING:
                     datastr = asm[1]
                     for character in asm[1]:
-                        self.memory[pointer]=ord(character)
+                        self.write_memory(pointer,ord(character))#self.memory[pointer]=ord(character)
                         pointer+=1
-                    self.memory[pointer]=0 # Add zero terminator automatically
+                    self.write_memory(pointer,0)#self.memory[pointer]=0 # Add zero terminator automatically
                     pointer+=1
                 else:
                     print("Don't know how to process opcode! OPCODE=",opcode)
@@ -175,7 +177,12 @@ class Assembler:
                 print("Failed to generate machine code on line:",line_number,":",line)
                 return False
         return self.backfill_references()
-    
+
+    def write_memory(self,position,byte):
+        self.memory[position]=byte
+        if self.maxPOS<position:
+            self.maxPOS=position
+        
     def process_databyte(self, data_byte):
         # hex byte
         hex_regex = "^0x[0-9A-Fa-f][0-9A-Fa-f]$"
@@ -294,13 +301,24 @@ class Assembler:
             cleaned = opcode
         return cleaned
 
+    def burn_binary(self):
+        size = self.maxPOS+1
+        binfilename = self.asmfilename.split('.')[0]+".bin"
+        print("Burning binary..."+binfilename+" size:"+str(size)+" bytes")
+        f = open(binfilename,"wb")
+        f.write(self.memory[0:size])
+        f.close
+        print("Binary written")
+
 if __name__=="__main__":
     #from .define_instructions import define_instructions
     memory = bytearray(0x10000)
-    asm = Assembler("asm files\\boot.txt",memory,"")
+    #asm = Assembler("asm files\\boot.txt",memory,"")
+    asm = Assembler("G:\\test2.asm",memory,"")
     success = asm.assemble()
     if success:
         print("Assembling successful")
+        asm.burn_binary()
     else:
         print("Assembling failed!")
 
