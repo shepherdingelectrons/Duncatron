@@ -460,8 +460,8 @@ ALUo = signal("ALUo",activeLow=True)
 Ii = signal("Ii",activeLow=True)
 PCo = signal("PCo",activeLow=True)
 PCinc = signal("PCinc")
-MARi = signal("MARi")
-Ro = signal("Ro")
+MARi = signal("MARi",activeLow=True)
+Ro = signal("Ro",activeLow=True)
 MC_reset = signal("MC_reset")
 
 T_HL = signal("T_HL") # need to check polarity of these signals. For now assume H=1, L=0

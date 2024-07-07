@@ -265,7 +265,7 @@ def add_carry_set_clear():
             for x in range(0,256):
                 if 0b1111&x==alu_pos and x not in valid:
                     valid.append(x)
-    add_instruction("CLRC",pos=None,addresses=valid,microcode_lines=[FETCH0,FETCH1,["Fi"]])
+    add_instruction("CLRC",pos=None,addresses=valid,microcode_lines=[FETCH0,FETCH1,["Fi","T_IO"]]) #Changed T_IO function in ALU PCB
 
     # Set carry by doing a CMP to 0 (SUB 0)
     # Sub = 0b0001
@@ -327,7 +327,7 @@ def add_ALU_LOGIC():
         ins,lower4bits = alu_ins
         
         u8=ins.count("0x@@") # Uses 8-bit immediate
-        changeA = ["ALUo","Ai","Fi"] # By default (unless a CMP instruction), put ALU output into A and change Flags
+        changeA = ["ALUo","Ai","Fi","T_IO"] # By default (unless a CMP instruction), put ALU output into A and change Flags
             
         valid = [a for a in range(0,256) if (a & 0b1111)==lower4bits]
         
@@ -386,8 +386,8 @@ def add_ALU_ARITHMETIC():
         op = ins[1]
         ins = ins[0]
         for reg_index, reg in enumerate(reg_names):
-            changeA = ["ALUo","Ai","Fi"] # By default (unless a CMP instruction), put ALU output into A and change Flags:
-            if ins[:3]=="CMP": changeA = ["Fi"] # Just change the flags, not A register
+            changeA = ["ALUo","Ai","Fi","T_IO"] # By default (unless a CMP instruction), put ALU output into A and change Flags:
+            if ins[:3]=="CMP": changeA = ["Fi","T_IO"] # Just change the flags, not A register
 
             o0 = 1 if (reg_index&1) else 0
             o1 = 1 if (reg_index&2) else 0
@@ -441,7 +441,7 @@ def add_ALU_inc_dec():
         
         valid = [addr]
         if reg=="A":
-            changeREG = ["ALUo","Ai","Fi"]
+            changeREG = ["ALUo","Ai","Fi","T_IO"]
             valid=[a for a in range(0,256) if (a&0b111)==0b000] # Only need to make sure a2=0,a1=a0=0
             # B is set to 1, relies on lower 8-bit bus having suitable pull-up/down resistors! LSB could be weakly pulled down with "X" so that 0 or 1 can be set?
             # d0 -----[1k]----X
@@ -459,15 +459,15 @@ def add_ALU_inc_dec():
             # Need to assert X signal so that a3=0
             pos=add_instruction(new_ins,pos=None,addresses=valid)#,microcode_lines=[FETCH0,FETCH1,["Ai"],["X","ALUo","Bi","Fi"]])
             if pos&0b1000 == 0b1000:
-                define_microcode(pos,[FETCH0,FETCH1,["Ai","X"],["X","ALUo","Bi","Fi"]]) # This uses X to pullup lower databus to 0x01
+                define_microcode(pos,[FETCH0,FETCH1,["Ai","X"],["X","ALUo","Bi","Fi","T_IO"]]) # This uses X to pullup lower databus to 0x01
             else:
-                define_microcode(pos,[FETCH0,FETCH1,["Ai","X"],["ALUo","Bi","Fi"]]) # This uses X to pullup lower databus to 0x01
+                define_microcode(pos,[FETCH0,FETCH1,["Ai","X"],["ALUo","Bi","Fi","T_IO"]]) # This uses X to pullup lower databus to 0x01
         else:
             setA = ["OUTen","Ai"]
-            changeREG = ["ALUo","INen","Fi"]
+            changeREG = ["ALUo","INen","Fi","T_IO"]
             out = reg_index # 0-7
             if o0==1: # then X signal needs to be set to toggle a3 to 0 (and set correct input address)
-                changeREG = ["X","ALUo","INen","Fi"]
+                changeREG = ["X","ALUo","INen","Fi","T_IO"]
 
             if reg=="r4":
                 # print("Hijacking",reg)
@@ -512,7 +512,7 @@ def add_ALU_inc_dec():
 
         valid = [addr]
         if reg=="A":
-            changeREG = ["ALUo","Ai","Fi"]
+            changeREG = ["ALUo","Ai","Fi","T_IO"]
 ##            if o0==0: # then X signal needs to be set to toggle a3 to 1, and i0=0 (=x0)
 ##                changeREG = ["X","ALUo","Ai","Fi"]
             valid=[a for a in range(0,256) if (a&0b111)==0b011] # Only need to make sure a2=0, a1=a0=1
@@ -523,15 +523,15 @@ def add_ALU_inc_dec():
             
         elif reg=="B":
             setA = ["OUTen","Ai"] # output address always fully defined
-            changeREG = ["ALUo","Bi","Fi","X"]
+            changeREG = ["ALUo","Bi","Fi","X","T_IO"]
             valid=[a for a in range(0,256) if (a&0b111111)==0b001011] # B out address is (001), DEC is 0b011
             add_instruction(new_ins,pos=addr,microcode_lines=[FETCH0,FETCH1,setA,changeREG])
             
         else:
             setA = ["OUTen","Ai"] # output address always fully defined
-            changeREG = ["ALUo","INen","Fi"]
+            changeREG = ["ALUo","INen","Fi","T_IO"]
             if o0==1: # need to assert X so a3 toggled to '0' and i0 toggled to '1' (=o0)
-                changeREG = ["X","ALUo","INen","Fi"]
+                changeREG = ["X","ALUo","INen","Fi","T_IO"]
             add_instruction(new_ins,pos=None,addresses=valid,microcode_lines=[FETCH0,FETCH1,setA,changeREG])
 
 def add_16bit_MATHS():
@@ -563,7 +563,7 @@ def add_16bit_MATHS():
             # A = r0 (i0=0, X-signal asserted)
             # B = 0
             # ALU = 0b0100 (ADDC), ALU out = r0, X-signal asserted, a3=0, i0=0
-            add_instruction(new_ins,pos=None,addresses=valid,microcode_lines=[FETCH0,FETCH1,["OUTen","Ai"],["Bi","X"],["ALUo","INen","Fi"],["OUTen","Ai","X"],["Bi"],["ALUo","INen","X","Fi"]])
+            add_instruction(new_ins,pos=None,addresses=valid,microcode_lines=[FETCH0,FETCH1,["OUTen","Ai"],["Bi","X"],["ALUo","INen","Fi","T_IO"],["OUTen","Ai","X"],["Bi"],["ALUo","INen","X","Fi","T_IO"]])
         
 def add_16bit_MOV():
     # 0b i2 i1 o2 o1 o0 i0 x x
@@ -746,7 +746,7 @@ def add_FLAGs():
     valid = [a for a in range(0,256)]
     add_instruction("MOV A,F",pos=None,addresses=valid,microcode_lines=[FETCH0,FETCH1,["Fo","Ai"]])
     add_instruction("PUSH F",pos=None,addresses=valid,microcode_lines=[FETCH0,FETCH1,["SPdec"],["SPo","MARi"],["Fo","Ri"]])
-    add_instruction("POP F",pos=None,addresses=valid,microcode_lines=[FETCH0,FETCH1,["SPo","MARi"],["Ro","Fi","SPinc","T_IO"]])
+    add_instruction("POP F",pos=None,addresses=valid,microcode_lines=[FETCH0,FETCH1,["SPo","MARi"],["Ro","Fi","SPinc"]]) # Changed ALU PCB use of T_IO
 
 def add_JMPs():
     valid = [a for a in range(0,256)]

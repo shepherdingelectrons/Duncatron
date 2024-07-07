@@ -73,6 +73,13 @@ AddCommand(15, 0b1100, 0, 2) # RCL = 2A+Flag_Carry
 for i in range(0,16):
 	print(i,bin(ROM[i]),bin(ROM[i+16]))
 
-f = open("ALU.py","w")
-f.write("ROM="+str(ROM)+"\n")
+size=len(ROM)
+binfilename = "ALU.rom"
+print("Burning ALU rom..."+binfilename+" size:"+str(size)+" bytes")
+f = open(binfilename,"wb")
+f.write(ROM[0:size])
 f.close()
+##print("Binary written")
+##f = open("ALU.py","w")
+##f.write("ROM="+str(ROM)+"\n")
+##f.close()

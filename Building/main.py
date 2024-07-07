@@ -105,7 +105,7 @@ def test_signals(waittime=0.1,verbose=True,tick=False):
             microwait(period)
         loop_condition= tick
 
-def burnBIN(binfilename="test.bin"):
+def burnBIN(binfilename="test.bin",check=True):
     f = open(binfilename,"rb")
     data = f.read()
     f.close
@@ -117,7 +117,21 @@ def burnBIN(binfilename="test.bin"):
         PC+=1
         print(hex(byte))
     print("Binary file",binfilename,"written, total bytes="+str(size))
-        
+
+    if check:
+        PC=0
+        read_errors = 0
+        for byte in data:
+            readbyte = int(readMEM(PC)[0])
+            if readbyte!=byte:
+                print("Should be:",byte,"read:",readbyte,"at position:",PC)
+                read_errors+=1
+            PC+=1
+        if read_errors ==0:
+            print("Read back OK!")
+        else:
+            print("Read back errors:",read_errors)
+            
 def program(filename="test.asm"):
     off(verbose=False)
     try:
@@ -541,12 +555,12 @@ def setI(data):
     Ii.off()
     Uin.off()
     
-def testMEM(write=False,seed=69):
+def testMEM(size=0x10000,write=False,seed=69):
     import random
     random.seed(seed)
     if write==True:
         print("Writing")
-        for a in range(0,0x10000):
+        for a in range(0,size):
             db = random.randint(0,256)
             writeMEM(a,db)
     print("Reading")
@@ -554,7 +568,7 @@ def testMEM(write=False,seed=69):
     mismatches = 0
     memory_map = 0x81
     
-    for a in range(0,0x10000):
+    for a in range(0,size):
         db = random.randint(0,256)
         read = readMEM(a)
         
