@@ -307,14 +307,14 @@ class Assembler:
         print("Burning binary..."+binfilename+" size:"+str(size)+" bytes")
         f = open(binfilename,"wb")
         f.write(self.memory[0:size])
-        f.close
+        f.close()
         print("Binary written")
 
 if __name__=="__main__":
     #from .define_instructions import define_instructions
     memory = bytearray(0x10000)
     #asm = Assembler("asm files\\boot.txt",memory,"")
-    asm = Assembler("G:\\test2.asm",memory,"")
+    asm = Assembler("G:\\test.asm",memory,"")
     success = asm.assemble()
     if success:
         print("Assembling successful")

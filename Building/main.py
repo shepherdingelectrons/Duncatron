@@ -112,15 +112,17 @@ def burnBIN(binfilename="test.bin",check=True):
 
     PC = 0
     size=len(data)
+    print("Writing...")
     for byte in data:
         writeMEM(PC,byte)
         PC+=1
-        print(hex(byte))
+        #print(hex(byte))
     print("Binary file",binfilename,"written, total bytes="+str(size))
 
     if check:
         PC=0
         read_errors = 0
+        print("Reading...")
         for byte in data:
             readbyte = int(readMEM(PC)[0])
             if readbyte!=byte:
@@ -131,7 +133,8 @@ def burnBIN(binfilename="test.bin",check=True):
             print("Read back OK!")
         else:
             print("Read back errors:",read_errors)
-            
+    
+    
 def program(filename="test.asm"):
     off(verbose=False)
     try:
@@ -213,7 +216,7 @@ def execute(asm_line,wait=0.5,verbose=True,realmemory=False,start=0,end=0,loop=F
     while True:
         
         for tick in range(0,8):
-            Z = 0
+            Z = FLAG_Z.value()
             C = 1 # no carry
             INS = opcode
 
@@ -226,7 +229,8 @@ def execute(asm_line,wait=0.5,verbose=True,realmemory=False,start=0,end=0,loop=F
 
             MC_RESET = False
             #new_INS = False
-            
+
+            test_Uin = 0 # 
             for s in range(0,24):
                 signal_name = SignalList[s].label
                 s_mask = s&7
@@ -242,53 +246,28 @@ def execute(asm_line,wait=0.5,verbose=True,realmemory=False,start=0,end=0,loop=F
 
                 override = False
 
-##                if signal_name=="MARi" and bit==0:
-##                    MAR=PC
-##                    #print("Setting MAR to PC",MAR)
-##                    if realmemory:
-##                        writeMAR(PC)
-##                        override=True
-##
-##                if signal_name=="PCinc" and bit==1:
-##                    PC+=1
-##                    #print("INC PC to:",PC)
-
                 if signal_name=="Ii" and bit==0:
-                    #print("loading new INS")
-                    #Uout.on()
-                    uart_output = I_REG
-                    #new_INS = True
-                
-                if signal_name=="Ro" and bit==0 and realmemory==False:                
-                    #print("Ro sending", machine_lang[MAR])
-                    uart.writechar(machine_lang[MAR])
-                    Uin.on()
-                    override=True # Send char by UART instead of MEM
-                    
-                if not override:
-                    SignalList[s].value(bit)
+                    uart_output = I_REG         
                     
                 if verbose:
                     if (SignalList[s].active_low and bit==0) or (SignalList[s].active_low==False and bit==1):
-##                        if signal_name=="T_HL" or signal_name=="T_IO":
-##                            signal_value=1
-##                            if SignalList[s].active_low:
-##                                signal_value=0
-##                            print(signal_name,"=",signal_value)
                         if verbose: print("PC="+hex4(PC),"MAR="+hex4(MAR),"tick="+str(tick),"Ireg="+str(INS),"Signal",signal_name,"active")
                 if signal_name=="MC_RESET" and bit==1:
-                    #off(verbose=False)
                     MC_RESET = True
                 if signal_name=="HALT" and bit==1:
                     return
 
-                if signal_name=="Uout" and bit==1:
-                    uart_output = U_REG
+                if signal_name=="INen" and bit==0:
+                    test_Uin = 1
+                
+                if not override:
+                    SignalList[s].value(bit)
+                    
                 # DEBUG: pipe Ai to UART:
-                if signal_name=="Ai" and bit==0:
-                    #Uout.on()
-                    #print("outputing Ai to UART")
-                    uart_output = A_REG
+##                if signal_name=="Ai" and bit==0:
+##                    #Uout.on()
+##                    #print("outputing Ai to UART")
+##                    uart_output = A_REG
                 # end of signal for loop
             # tick for loop     
             I2 = 1 if INS&(1<<2) else 0
@@ -298,8 +277,16 @@ def execute(asm_line,wait=0.5,verbose=True,realmemory=False,start=0,end=0,loop=F
 
             alu_addr = INS&(0b111) | (a3_o0)<<3
             #print("ALU_ADDR:",alu_addr)
-            if uart_output: Uout.on()
+
+            if test_Uin:
+                I6 = 1 if INS & (1<<6) else 0
+                I7 = 1 if INS & (1<<7) else 0
+                UARTmux = (I7<<2) | (I6<<1) | in0
+                if UARTmux==0:
+                    uart_output = U_REG
             
+            if uart_output: Uout.on()
+
             microwait(wait*1E6)
             CLK.on()
             microwait(wait*1E6)
@@ -326,7 +313,8 @@ def execute(asm_line,wait=0.5,verbose=True,realmemory=False,start=0,end=0,loop=F
                                 opcode = char
                             INS = opcode
                     elif uart_output==U_REG:
-                        print("UART output =",char)
+                        #print("UART output =",char,hex(char),chr(char))
+                        print(chr(char),end="")
                     else:
                         print("uart_output not supported!",uart_output)
                 else:
@@ -609,9 +597,10 @@ OUTen = Signal("OUTen","X4", Pin.OUT_PP, active_low=True)
 INen = Signal("INen","X5", Pin.OUT_PP, active_low=True)
 X = Signal("X","X6", Pin.OUT_PP, active_low=False)
 Fo = Signal("Fo","X7", Pin.OUT_PP, active_low=True)
-HALT = Signal("HALT","X8", Pin.OUT_PP, active_low=False)
+HALT = Signal("HALT","X8", Pin.OUT_PP, active_low=False) # Use as input for FLAG_Z
 SPo = Signal("SPo","Y9", Pin.OUT_PP, active_low=True)
 
+FLAG_Z = Pin("X8", Pin.IN, Pin.PULL_DOWN)
 # Bo is just included for convenience here - it is generated by the register module
 # so remember to remove before adding that!
 
@@ -630,10 +619,10 @@ uart = UART(6,38400) # https://docs.micropython.orrg/en/latest/library/pyb.UART.
    
 off()
 uart.read() # clear uart buffer
-test_signals(waittime=0.05)
-off(invert=True)
-microwait(1E6)
-off()
+#test_signals(waittime=0.05)
+#off(invert=True)
+#microwait(1E6)
+#off()
 #mock_working()
 print("Ready")
 #test_signals(waittime=0.2, verbose=False,tick=True)
@@ -641,9 +630,9 @@ print("Ready")
 control0 = OpenControlFile("control_EEPROM0.txt")
 control1 = OpenControlFile("control_EEPROM1.txt")
 control2 = OpenControlFile("control_EEPROM2.txt") 
-print("hello")
-from assembler import asm
-print(asm("MOV A,B"))
+##print("hello")
+##from assembler import asm
+##print(asm("MOV A,B"))
 
 ##print("imported assembler")
 ##execute("INC A")
