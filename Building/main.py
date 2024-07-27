@@ -1,6 +1,8 @@
 from pyb import Pin
 import random
 import pyb
+import select
+import sys
 
 # Make Microsecond timer
 def microwait(duration):
@@ -134,6 +136,8 @@ def burnBIN(binfilename="test.bin",check=True):
         else:
             print("Read back errors:",read_errors)
     
+    writePC(0)
+    writeMAR(0)
     
 def program(filename="test.asm"):
     off(verbose=False)
@@ -173,38 +177,11 @@ def hex2(num):
 
 def hex4(num):
     return "{0:#0{1}x}".format(num,6)
-
-def run(period=0.0,verb=False):
-    off(verbose=False)
-    execute(None,wait=period,verbose=verb,realmemory=True,start=0,end=0,loop=False)
-
-def executeINS(asm_line,wait=0.5,verbose=True):
-    execute(asm_line,wait,verbose,realmemory=False)
             
-def execute(asm_line,wait=0.5,verbose=True,realmemory=False,start=0,end=0,loop=False):
-
-    PC = 0
-    MAR = 0
-
-    test_uart = False
-    
-    if realmemory==False:
-        machine_lang = asm(asm_line)
-        print(machine_lang)
-        if machine_lang==None:
-            print("could not parse asm")
-            return
-        opcode = machine_lang[PC]
-        print("Opcode=",opcode)
-    else:
-        PC=start
-        if test_uart:
-            opcode = 19 # mov U,0x??
-            setI(opcode)
-        else:
-            opcode = readMEM(PC)[0]
-
+def run(wait=0.0):
     CLK.off()
+    off(verbose=False)
+    opcode = 255
     # Skipping FETCH instruction for NOW
     #setI(machine_lang[0]) # set address
 
@@ -212,6 +189,8 @@ def execute(asm_line,wait=0.5,verbose=True,realmemory=False,start=0,end=0,loop=F
     I_REG = 1
     A_REG = 2
     U_REG = 3
+
+    uart.read() # clear cacheua
     
     while True:
         
@@ -230,7 +209,19 @@ def execute(asm_line,wait=0.5,verbose=True,realmemory=False,start=0,end=0,loop=F
             MC_RESET = False
             #new_INS = False
 
-            test_Uin = 0 # 
+            test_Uin = 0 #
+            test_Uout = 0
+
+            import select
+            p = select.poll()
+            p.register(sys.stdin)
+
+            MP_STREAM_POLL_RD = const(1)
+            _, flags = p.poll(0)[0]
+            if flags & MP_STREAM_POLL_RD:
+                cmd = sys.stdin.read(1)
+                uart.write(cmd)
+
             for s in range(0,24):
                 signal_name = SignalList[s].label
                 s_mask = s&7
@@ -247,27 +238,18 @@ def execute(asm_line,wait=0.5,verbose=True,realmemory=False,start=0,end=0,loop=F
                 override = False
 
                 if signal_name=="Ii" and bit==0:
-                    uart_output = I_REG         
-                    
-                if verbose:
-                    if (SignalList[s].active_low and bit==0) or (SignalList[s].active_low==False and bit==1):
-                        if verbose: print("PC="+hex4(PC),"MAR="+hex4(MAR),"tick="+str(tick),"Ireg="+str(INS),"Signal",signal_name,"active")
+                    uart_output = I_REG                             
                 if signal_name=="MC_RESET" and bit==1:
                     MC_RESET = True
                 if signal_name=="HALT" and bit==1:
                     return
 
-                if signal_name=="INen" and bit==0:
+                if signal_name=="INen" and bit==0: # Duncatron wants to send/receive UART maybe
                     test_Uin = 1
                 
                 if not override:
                     SignalList[s].value(bit)
-                    
-                # DEBUG: pipe Ai to UART:
-##                if signal_name=="Ai" and bit==0:
-##                    #Uout.on()
-##                    #print("outputing Ai to UART")
-##                    uart_output = A_REG
+                
                 # end of signal for loop
             # tick for loop     
             I2 = 1 if INS&(1<<2) else 0
@@ -278,13 +260,16 @@ def execute(asm_line,wait=0.5,verbose=True,realmemory=False,start=0,end=0,loop=F
             alu_addr = INS&(0b111) | (a3_o0)<<3
             #print("ALU_ADDR:",alu_addr)
 
+            I6 = 1 if INS & (1<<6) else 0
+            I7 = 1 if INS & (1<<7) else 0
+            UARTmux = (I7<<2) | (I6<<1) | in0
+
             if test_Uin:
-                I6 = 1 if INS & (1<<6) else 0
-                I7 = 1 if INS & (1<<7) else 0
-                UARTmux = (I7<<2) | (I6<<1) | in0
-                if UARTmux==0:
+                if UARTmux==0: # Duncatron wants to send char but we control the Uin line
                     uart_output = U_REG
-            
+                if UARTmux==1: # Duncatron wants to receive char but we control the Uout line
+                    Uin.on()
+                
             if uart_output: Uout.on()
 
             microwait(wait*1E6)
@@ -303,17 +288,9 @@ def execute(asm_line,wait=0.5,verbose=True,realmemory=False,start=0,end=0,loop=F
                     if uart_output==A_REG:
                         print("A reg:",char,hex(char),bin(char),chr(char))
                     elif uart_output==I_REG:
-                        #print("I reg:",char,hex(char),bin(char),chr(char))
-                        if realmemory:
-                            if test_uart:
-                                opcode=19 # mov U,0x??
-                            else:
-##                                microwait(1E5)
-##                                opcode = readMEM(MAR)[0]
-                                opcode = char
+                            opcode = char
                             INS = opcode
                     elif uart_output==U_REG:
-                        #print("UART output =",char,hex(char),chr(char))
                         print(chr(char),end="")
                     else:
                         print("uart_output not supported!",uart_output)
@@ -322,11 +299,8 @@ def execute(asm_line,wait=0.5,verbose=True,realmemory=False,start=0,end=0,loop=F
             
             uart_output=0
             if MC_RESET==True:
-                #print("MC_RESET is true")
                 break
             
-            if verbose: print("-"*20)
-        if realmemory==False: return
         # while LOOP
     
 def OpenControlFile(filename):
@@ -458,7 +432,10 @@ def shr():
     X.off()
     readT()
 
-def writeMAR(address):
+def writePC(address):
+    writeMAR(address,writePC=True)
+
+def writeMAR(address,writePC=False):
     low = address & 0xFF
     high = (address>>8)&0xFF
 
@@ -472,13 +449,19 @@ def writeMAR(address):
     T_HL.on()
     
     Uin.on()
-    MARi.on()
+    if writePC:
+        PCi.on()
+    else:
+        MARi.on()
     microwait(1E3)
     CLK.on()
     microwait(1E3)
     CLK.off()
     Uin.off()
-    MARi.off()
+    if writePC:
+        PCi.off()
+    else:
+        MARi.off()
     T_IO.off()
     T_EN.off()
     T_HL.off()
@@ -619,6 +602,8 @@ uart = UART(6,38400) # https://docs.micropython.orrg/en/latest/library/pyb.UART.
    
 off()
 uart.read() # clear uart buffer
+writePC(0)
+writeMAR(0)
 #test_signals(waittime=0.05)
 #off(invert=True)
 #microwait(1E6)

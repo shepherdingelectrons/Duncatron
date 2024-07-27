@@ -240,6 +240,9 @@ class Assembler:
 
         # use memory labels with some instructions:
         self.asmregex.append(("^(MOV r0r1,)([^0^x].*)$",self.MEMORY_LABEL)) # this could be generalised in future to all 16-bit memory reference instructions
+        self.asmregex.append(("^(MOV r2r3,)([^0^x].*)$",self.MEMORY_LABEL)) # this could be generalised in future to all 16-bit memory reference instructions
+        self.asmregex.append(("^(MOV r4r5,)([^0^x].*)$",self.MEMORY_LABEL)) # this could be generalised in future to all 16-bit memory reference instructions
+             
         
         return True
     
