@@ -1,3 +1,42 @@
+class HTMLtable:
+##<table>
+##<tbody>
+##<tr><td>one  </td><td>two  </td><td>three</td></tr>
+##<tr><td>four </td><td>five </td><td>six  </td></tr>
+##<tr><td>seven</td><td>eight</td><td>nine </td></tr>
+##</tbody>
+##</table>
+    def __init__(self,filename=None):
+        self.startHTML="<table>\n"\
+        "<tbody>\n"
+        self.endHTML="<tbody>\n"\
+        "<table>"
+        self.html=""
+
+        self.filename = filename
+        
+    def start(self):
+        self.html=self.startHTML
+
+    def end(self):
+        self.html+=self.endHTML
+
+        if self.filename!=None:
+            with open(self.filename, "w") as text_file:
+                text_file.write(self.html)
+
+    def add_column(self,headings,bold=False):
+        if self.html=="":
+            self.start()
+        line = "<tr>"
+        if bold: line+="<b>"
+        for item in headings:
+            line+="<td>"+item+"</td>"
+
+        if bold: line+="</b>"
+        line+= "</tr>\n"
+        self.html+=line
+
 def add_instruction(ins,pos,addresses=None,microcode_lines=None,quiet=False):
     if pos==None: # Find free position first:
         if addresses==None:
@@ -57,6 +96,7 @@ def get_instruction_properties(tilde,op):
     ALU_ins = ""
     cycles = 0
     zp = "  "
+    jmp = False
     
     for m in microcode[op]:
         if m!="" and "MC_reset" not in m:
@@ -78,6 +118,9 @@ def get_instruction_properties(tilde,op):
             
         if "PCinc" in m:
             PC +=1
+        if "PCi" in m:
+            jmp = True
+        
         if "Ai" in m:
             if "A" not in regs:
                 regs +="A,"
@@ -119,6 +162,7 @@ def get_instruction_properties(tilde,op):
     temp_prop["ALU_ins"]=ALU_ins
     temp_prop["cycles"]=str(cycles)
     temp_prop["zp"]=zp
+    temp_prop["jmp"]=jmp
     
     return temp_prop
     
@@ -161,12 +205,13 @@ def info_table(ins, op):
     props[3]=get_instruction_properties(tilde,op+768)
 
     flags = props[0]["flags"]
-    PC = props[0]["PC"]
+    PCs = [props[n]["PC"] for n in range(0,4)]
+    jmps =[props[n]["jmp"] for n in range(0,4)]
     regs = props[0]["regs"]
     ALU_ins = props[0]["ALU_ins"]
     cycles = props[0]["cycles"]
     zp = props[0]["zp"]
-
+    
     diff=1
     if props[0]["cycles"]==props[1]["cycles"]==props[2]["cycles"]==props[3]["cycles"]:
         diff=0
@@ -179,19 +224,27 @@ def info_table(ins, op):
                
     opcode = "0x{:02x}".format(op)
     machine_code = opcode+post
-    PC = "PC=PC+"+str(PC)
+    
     
     if ALU_ins!="":
         ALU_ins=ALU_ins[:-1]
     else:
         ALU_ins=" "
         
+    PC="PC=PC+"+str(PCs[0])
+    for j,jmp in enumerate(jmps):
+        if jmp:
+            PCs[j] = " "
+    if not(PCs[0]==PCs[1]==PCs[2]==PCs[3]):
+        PC="PC=PC+"+"|".join([str(p) for p in PCs])
+        
     if len(machine_code)<8: machine_code=machine_code+"\t"
     if len(ins)<8: ins=ins+"\t"
 # opcode, instruction, usage, machine code, flags changed, registers changed, total cycles, PC change,
 # add SP change?
 
-    info = opcode+"\t"+code+"\t"+ins+"\t"+machine_code+"\t"+flags+"\t"+regs+"\t"+cycles+"\t"+PC+"\t"+ALU_ins+"\t"+zp
+    info = [opcode,code,ins,machine_code,flags,regs,cycles,PC,zp]
+    #info = opcode+"\t"+code+"\t"+ins+"\t"+machine_code+"\t"+flags+"\t"+regs+"\t"+cycles+"\t"+PC+"\t"+ALU_ins+"\t"+zp
     return info
 
 def define_signal(signal,active_low=False,position=None):
@@ -967,7 +1020,7 @@ add_misc()
 
 instruction_str = ""
 
-output_type = 0# 0 = No output, 1 = customasm CPU definition, 2 = instruction property table, 3 = instruction_str for ASM interpreter
+output_type = 2# 0 = No output, 1 = customasm CPU definition, 2 = instruction property table, 3 = instruction_str for ASM interpreter
 headers=["Instruction","Opcode","PC change","Register change"]
 instruction_table = []
 
@@ -986,7 +1039,8 @@ for op,ins in enumerate(instruction_set):
 
     if ins!="":
         if output_type==1: custom_asm.append(customasm(ins,op))
-        if output_type==2: instruction_table.append(info_table(ins,op))
+        if output_type==2:
+            instruction_table.append(info_table(ins,op)) # List of items in line
         total_ins+=1
     else:
         free_ins.append(op)
@@ -1043,7 +1097,7 @@ if output_type==1:# append other instructions for customasm
 	 
         custom_asm.append("_"+c+"{addr16: u16} => {assert((addr16[7:0]==0)),"+find_pushpc+find_call+" @addr16[15:8]}")
 
-    find_int = find_instruction("INT~")
+    find_int = find_instruction("INT")
     custom_asm.append("_INT => "+find_int+"00")
     for l in sorted(custom_asm):
         print("\t",l)
@@ -1053,12 +1107,18 @@ if output_type==1:# append other instructions for customasm
 if output_type==2:
     # Bit of processing
     for i,line in enumerate(instruction_table):
-        line=line.split('\t')
-        line = [x for x in line if x!='']
+        #line=line.split('\t')
+        #line = [x for x in line if x!='']
         instruction_table[i] = line
 
     instruction_table = sorted(instruction_table, key=lambda ins: ins[2])
+    INStable = HTMLtable("Instruction table.html")
+    html_headings = ["Opcode","Code","Instruction","Machine code","Flags changed","Regs changed","Cycles","PC","Zero page"]
+    INStable.start()
+    INStable.add_column(html_headings,bold=True)
+    
     for line in instruction_table:
+        INStable.add_column(line)
         s=""
         if len(line[2])<8: line[2]+='\t'
         if len(line[3])<8: line[3]+='\t'
@@ -1071,8 +1131,10 @@ if output_type==2:
         if len(line[5])<8: line[5]+='\t'
         for element in line:
             s += element+'\t'
-        print(s)
+        #print(s)
+    INStable.end()
     print("Total instructions=",total_ins)
+    #print(INStable.html)
 if output_type==3: print(instruction_str, len(instruction_str))
 
 # Put "NOP" into unfilled instructions:
@@ -1147,4 +1209,4 @@ if write_EEPROM:
     write_EEPROM_block(0,textmode=True)
     write_EEPROM_block(1,textmode=True)
     write_EEPROM_block(2,textmode=True)
-    
+
