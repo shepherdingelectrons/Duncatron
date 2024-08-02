@@ -11,6 +11,7 @@ call print_str
 mov r2r3,input_str
 mov r4,0x00
 mov U,0x3E ; ">"
+mov A,U ; clear uart register
 
 ; ################ main() ####################
 main_loop:
