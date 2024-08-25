@@ -1029,6 +1029,13 @@ add_JMPs()
 
 add_misc()
 
+if __name__=="__main__":
+    write_EEPROM = True # Write EEPROM bytearray to file
+    build_HTML = True
+else:
+    write_EEPROM = False
+    build_HTML = False
+
 instruction_str = ""
 
 output_type = 2# 0 = No output, 1 = customasm CPU definition, 2 = instruction property table, 3 = instruction_str for ASM interpreter
@@ -1143,8 +1150,10 @@ if output_type==2:
         for element in line:
             s += element+'\t'
         #print(s)
-    INStable.end()
-    print("Wrote HTML instruction table")
+
+    if build_HTML:
+        INStable.end()
+        print("Wrote HTML instruction table")
     print("Total instructions=",total_ins)
     #print(INStable.html)
 if output_type==3: print(instruction_str, len(instruction_str))
@@ -1156,10 +1165,6 @@ for i in range(0,256*4):
 
 # ADDRESS_SPACE = 2**(8+2+3) #256 instructions, Z, C and 3-bit microcode counter
 # Z C m m m I I I I I I I I
-if __name__=="__main__":
-    write_EEPROM = True # Write EEPROM bytearray to file
-else:
-    write_EEPROM = False
 
 def write_EEPROM_block(EEPROM_BYTE,textmode=False):
     # Which byte of the control word is getting written to the EEPROM? EEPROM_BYTE either 0, 1 or 2 for 24 control signals
