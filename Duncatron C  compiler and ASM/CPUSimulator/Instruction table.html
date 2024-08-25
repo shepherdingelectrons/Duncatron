@@ -30,7 +30,6 @@
 <tr><td>0xed</td><td>CALL_NE</td><td>CALL_NE 0xHIJK</td><td>0xedHIJK</td><td>-</td><td>T|T| | </td><td>6|6|4|4</td><td>PC=PC+ | |3|3</td><td>  </td></tr>
 <tr><td>0xea</td><td>CALL_NZ</td><td>CALL_NZ 0xHIJK</td><td>0xeaHIJK</td><td>-</td><td>T|T| | </td><td>6|6|4|4</td><td>PC=PC+ | |3|3</td><td>  </td></tr>
 <tr><td>0xe9</td><td>CALL_Z</td><td>CALL_Z 0xHIJK</td><td>0xe9HIJK</td><td>-</td><td> | |T|T</td><td>4|4|6|6</td><td>PC=PC+3|3| | </td><td>  </td></tr>
-<tr><td>0xe7</td><td>CLRC</td><td>CLRC	</td><td>0xe7	</td><td>Z,C,N</td><td> </td><td>3</td><td>PC=PC+1</td><td>  </td></tr>
 <tr><td>0x02</td><td>CMP</td><td>CMP A,0xHI</td><td>0x02HI	</td><td>Z,C,N</td><td>B</td><td>5</td><td>PC=PC+2</td><td>  </td></tr>
 <tr><td>0x42</td><td>CMP</td><td>CMP A,B	</td><td>0x42	</td><td>Z,C,N</td><td> </td><td>3</td><td>PC=PC+1</td><td>  </td></tr>
 <tr><td>0x12</td><td>CMP</td><td>CMP A,r0</td><td>0x12	</td><td>Z,C,N</td><td>B</td><td>4</td><td>PC=PC+1</td><td>  </td></tr>
@@ -239,6 +238,7 @@
 <tr><td>0xfd</td><td>RET</td><td>RET	</td><td>0xfd	</td><td>-</td><td> </td><td>7</td><td>PC=PC+4</td><td>  </td></tr>
 <tr><td>0x85</td><td>RETI</td><td>RETI	</td><td>0x85	</td><td>-</td><td>T</td><td>7</td><td>PC=PC+2</td><td>  </td></tr>
 <tr><td>0xf0</td><td>SHL</td><td>SHL A	</td><td>0xf0	</td><td>Z,C,N</td><td>A</td><td>3</td><td>PC=PC+1</td><td>  </td></tr>
+<tr><td>0xe7</td><td>SHR</td><td>SHR A	</td><td>0xe7	</td><td>-</td><td>T,A</td><td>5</td><td>PC=PC+1</td><td>  </td></tr>
 <tr><td>0x01</td><td>SUB</td><td>SUB A,0xHI</td><td>0x01HI	</td><td>Z,C,N</td><td>B,A</td><td>5</td><td>PC=PC+2</td><td>  </td></tr>
 <tr><td>0x41</td><td>SUB</td><td>SUB A,B	</td><td>0x41	</td><td>Z,C,N</td><td>A</td><td>3</td><td>PC=PC+1</td><td>  </td></tr>
 <tr><td>0x11</td><td>SUB</td><td>SUB A,r0</td><td>0x11	</td><td>Z,C,N</td><td>B,A</td><td>4</td><td>PC=PC+1</td><td>  </td></tr>

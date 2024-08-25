@@ -318,8 +318,19 @@ def add_carry_set_clear():
             for x in range(0,256):
                 if 0b1111&x==alu_pos and x not in valid:
                     valid.append(x)
-    add_instruction("CLRC",pos=None,addresses=valid,microcode_lines=[FETCH0,FETCH1,["Fi","T_IO"]]) #Changed T_IO function in ALU PCB
-
+    CLRC_pos = add_instruction("CLRC",pos=None,addresses=valid,microcode_lines=[FETCH0,FETCH1,["Fi","T_IO"]]) #Changed T_IO function in ALU PCB
+    # hijack CLRC with more useful SHR A
+    ## def shr():
+    ##    X.on()
+    ##    writeT(0) # value doesn't matter
+    ##    X.off()
+    ##    readT()
+    ## Need to write A to T, do the shift right and then write T to A
+    ## ["Ao","T_EN"] # T-reg: Save (input) from LOW bus
+    ## ["X","T_EN"] - doing a dummy write to T-reg register with X enabled performs the shift right
+    ## ["Ai","T_EN","T_IO"] - write to A reg from T reg
+    instruction_set[CLRC_pos]="" # wipe position to re-use
+    add_instruction("SHR A",pos=CLRC_pos,microcode_lines=[FETCH0,FETCH1,["Ao","T_EN"],["X","T_EN"],["Ai","T_EN","T_IO"]])
     # Set carry by doing a CMP to 0 (SUB 0)
     # Sub = 0b0001
     # B is set to 0 by asserting X (active low, X=0) and using pull-up/down resistors on databus with no register output
@@ -1133,6 +1144,7 @@ if output_type==2:
             s += element+'\t'
         #print(s)
     INStable.end()
+    print("Wrote HTML instruction table")
     print("Total instructions=",total_ins)
     #print(INStable.html)
 if output_type==3: print(instruction_str, len(instruction_str))
