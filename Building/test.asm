@@ -1,11 +1,26 @@
 init:
-mov r0r1,INTERUPT; setup interupt jump vector
+mov r0r1,INTERUPT; setup interrupt jump vector
 mov [0x00],r0	; Zero page 0x00
 mov [0x01],r1	; Zero page 0x01
+
+mov r5,0x01	; print 0x in print_hex
+mov r4,r0	; Display interrupt vector address
+push_pc+1
+call print_hex
+;mov U,0x3a; 58 = ':'
+mov r5,0x00	; no leading 0x
+mov r4,r1
+push_pc+1
+call print_hex
 
 mov r0r1,ready	; Print a greeting message
 push_pc+1
 call print_str
+
+mov A,0x50 ; P
+mov U,A
+shr A
+mov U,A    ; 0x28 = (
 
 ; New string:
 mov r2r3,input_str
@@ -39,13 +54,25 @@ push_pc+1
 call cmp_str
 mov A,r5
 cmp A,0x01
-jz main.exit
+jz main.exit	; exit main loop and HALT
+
+mov r0r1,program_str
+mov r2r3,input_str 
+push_pc+1
+call cmp_str
+mov A,r5
+cmp A,0x01
+push_pc+1
+call_z program_mode
+jmp execute_cmd.exit
 
 ; Else, command not found
+; Throw an error
 mov r0r1,error_str
 push_pc+1
 call print_str
 
+execute_cmd.exit:
 mov r2r3,input_str ; setup new input string
 mov r4,0x00
 mov U,0x3E ; ">"
@@ -158,7 +185,73 @@ mov U,0x0D
 POP T
 RET
 
+;#######################  General helper function print_hex	#######################
+;####  Prints the hex of a single byte;						#######################
+;####  r4: single byte to print in format 0xYZ				#######################
+;####  r5 = 0, don't print leading '0x', else print it  	#######################
+;##################################################################################
 
+; Could change this routine to let the user print '0x' or not before calling print_hex
+print_hex:
+mov A,r5
+cmp A,0x00
+jz print_hex.nolead
+
+mov U,0x30	; 48 = '0'
+mov U,0x78	; 120 = 'x'
+print_hex.nolead:
+mov r5,0x02	; change r5 and use as a loop counter (r5=2)
+
+mov A,r4	
+shr A
+shr A
+shr A
+shr A		; shift right A four times to extract upper half
+
+print_hex.process:	; takes 4 LSBs of A and displays hex character
+	add A,0x30	; add '0' (48) to A
+	cmp A,0x3a	; 0x3a = 58 = position after '9' character
+	jl print_hex.digit	; jump if digit is 0-9 and display
+	add A,0x07			; map A onto range starting from 65=A otherwise
+
+	print_hex.digit:
+		mov U,A		; output digit
+		dec r5		; changes A
+		jz print_hex.exit
+		mov A,r4	; restore original r4 byte into A
+		and A,0x0F	; Extract lower half
+		jmp print_hex.process
+	
+print_hex.exit:
+	POP T
+	RET
+
+;### Programming mode
+;### Will be useful to have a HEX byte print function
+program_mode:
+mov r2,0x0A	; 10 lines
+mov r0r1, program_mode_str
+program_mode.display_text:
+	push_pc+1
+	call print_str	; Line 1-10
+	inc r0r1
+	dec r2
+	jnz program_mode.display_text
+
+mov r2r3,input_str ; setup new input string
+mov r4,0x00
+mov U,0x3E ; ">"
+
+; ################ main() ####################
+program_mode.loop:
+	push_pc+1
+	call handle_input	; returns r5=0 if no string, else r5=1
+	mov A,r5
+	cmp A,0x01
+	;push_pc+1
+	;call_z execute_cmd ; process the commands in some way
+
+	jmp program_mode.loop
 
 ; data labels don't have to be page-aligned
 welcome:
@@ -175,4 +268,17 @@ goodbye_str:
 dstr 'Bye!'
 error_str:
 dstr 'ERROR'
+program_str:
+dstr 'prog'
+program_mode_str:
+dstr 'Entering PROGRAMMING mode'
+dstr 'Commands: h@ ; set high address to @ (@=byte)'
+dstr '			l@ ; set low address to @'
+dstr '			a@@; set 16-bit address to @@'
+dstr '			i  ; increment address +1'
+dstr '			d  ; decrement address -1'
+dstr '			w@ ; write the byte @ at current address'
+dstr '			r  ; read the byte at current address'
+dstr '			j  ; jump to current address'
+dstr '			u  ; uart serial mode (no carriage return)'
 input_str: ;
