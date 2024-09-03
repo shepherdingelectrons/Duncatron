@@ -107,19 +107,20 @@ def test_signals(waittime=0.1,verbose=True,tick=False):
             microwait(period)
         loop_condition= tick
 
-def burnBIN(binfilename="test.bin",check=True):
+def burnBIN(binfilename="test.bin",write=True,check=True):
     f = open(binfilename,"rb")
     data = f.read()
     f.close
 
     PC = 0
     size=len(data)
-    print("Writing...")
-    for byte in data:
-        writeMEM(PC,byte)
-        PC+=1
-        #print(hex(byte))
-    print("Binary file",binfilename,"written, total bytes="+str(size))
+    if write:
+        print("Writing...")
+        for byte in data:
+            writeMEM(PC,byte)
+            PC+=1
+            #print(hex(byte))
+        print("Binary file",binfilename,"written, total bytes="+str(size))
 
     if check:
         PC=0

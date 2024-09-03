@@ -30,6 +30,7 @@ class Assembler:
         self.lookupASM = []
      
     def read_and_clean_text(self,text):
+        print("Warnng, this doesn't implement safe ; and : handling, unlike read_and_clean_file")
         for line in text.split("\n"):
             if ";" in line:
                 line = line[:line.find(";")]
@@ -38,10 +39,37 @@ class Assembler:
     def read_and_clean_file(self,filename):
         with open(filename) as file:
             for line in file:
-                if ";" in line:
-                    line = line[:line.find(";")]
-                self.lines.append(line.strip())
-                
+                # Find first ; character that isn't in a string
+                semi_pos = self.find_char(line,";")
+                if semi_pos!=None:
+                    line = line[:semi_pos]
+
+                # Find colons not in a string
+                colon_pos = self.find_char(line,":")
+                if colon_pos!=None:
+                    line_split0 = line[:colon_pos+1].strip()
+                    line_split1 = line[colon_pos+1:].strip()
+                    self.lines.append(line_split0)
+                    if len(line_split1)>0:
+                        self.lines.append(line_split1)
+                        
+                else: # commit line
+                    self.lines.append(line.strip())
+    def find_char(self,string,char):
+        # mov A,B ; this should be ignored
+        # dstr 'mov A,B ; this shouldn't be ignored'
+        # dstr 'mov A,B ; this shouldn't be ignored' ; this should be!
+
+        # label0:
+        # dstr 'commands: /h help'
+        instring = 0
+        for pos,a in enumerate(string):
+            if a==char and instring==0:
+                    return pos
+            if a=="'":
+                instring=1-instring
+        return None
+    
     def add_label(self,newlabel,address):
         if newlabel in self.labels:
             print("ERROR: Label '"+newlabel+"' already declared!")
@@ -281,15 +309,6 @@ class Assembler:
         # the expected format
         
         if line=="": return ""    # Empty line
-        if ":" in line:
-            operand,non_label = line.split(":",1)
-            non_label=non_label.strip()
-            if non_label.strip()!="":
-                print("Unexpected characters '"+non_label+"' after ':'")
-                return False
-            if " " in operand:
-                print("Unexpected " " in label:",operand)
-                return False
 
         if " " in line:
             opcode,operands = line.split(" ",1)

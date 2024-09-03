@@ -7,7 +7,6 @@ mov r5,0x01	; print 0x in print_hex
 mov r4,r0	; Display interrupt vector address
 push_pc+1
 call print_hex
-;mov U,0x3a; 58 = ':'
 mov r5,0x00	; no leading 0x
 mov r4,r1
 push_pc+1
@@ -254,31 +253,23 @@ program_mode.loop:
 	jmp program_mode.loop
 
 ; data labels don't have to be page-aligned
-welcome:
-dstr 'Welcome to Duncatron v1.0'
-ready:
-dstr 'READY'
-helloworld:
-dstr 'Hello world @=)'
-interupt_text:
-dstr 'Interupt called!'
-exit_str:
-dstr 'exit'
-goodbye_str:
-dstr 'Bye!'
-error_str:
-dstr 'ERROR'
-program_str:
-dstr 'prog'
+welcome: dstr 'Welcome to Duncatron v1.0'
+ready: dstr 'READY'
+helloworld: dstr 'Hello world @=)'
+interupt_text: dstr 'Interupt called!'
+exit_str: dstr 'exit'
+goodbye_str: dstr 'Bye!'
+error_str: dstr 'ERROR'
+program_str: dstr 'prog'
 program_mode_str:
-dstr 'Entering PROGRAMMING mode'
-dstr 'Commands: h@ ; set high address to @ (@=byte)'
-dstr '			l@ ; set low address to @'
-dstr '			a@@; set 16-bit address to @@'
-dstr '			i  ; increment address +1'
-dstr '			d  ; decrement address -1'
-dstr '			w@ ; write the byte @ at current address'
-dstr '			r  ; read the byte at current address'
-dstr '			j  ; jump to current address'
-dstr '			u  ; uart serial mode (no carriage return)'
+dstr 'Entering PROGRAMMING mode' ; this comment gets ignored
+dstr 'Commands:	h#  ; set high address to # (#=byte)'
+dstr '			l#  ; set low address to #'
+dstr '			a## ; set 16-bit address to ##'
+dstr '			i   ; increment address +1'
+dstr '			d   ; decrement address -1'
+dstr '			w#  ; write the byte @ at current address'
+dstr '			r   ; read the byte at current address'
+dstr '			j   ; jump to current address'
+dstr '			u   ; uart serial mode (no carriage return)'
 input_str: ;
