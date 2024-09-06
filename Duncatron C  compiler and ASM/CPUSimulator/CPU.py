@@ -115,6 +115,9 @@ class register():
         if self.name=="T":
             if T_IO.value==0: # Means Transfer register set for input
                 self.select_databus()
+                if X.value==1: # X is asserted during a T register load-->SHR
+                    self.value = self.value>>1 # UNTESTED
+                    return
             else:
                 return # Do nothing, return
             
