@@ -1,3 +1,22 @@
+mov r0r1,jump_table
+mov A,0x00 ; index into jump table
+shl A
+add A,r1 ; add r0r1+A
+mov r1,A
+mov A,r0
+addc A,0x00
+mov r0,A
+
+push r0
+push r1
+pop PC ; jmp init!
+
+db 0x06,0x09,0x0A,69,42
+dw 0x1234,0x6942,258
+
+jump_table:
+dw init,main_loop,handle_input,0x4321,513,input_str;testing
+
 init:
 mov r0r1,INTERUPT; setup interrupt jump vector
 mov [0x00],r0	; Zero page 0x00
