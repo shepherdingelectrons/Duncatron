@@ -4,13 +4,12 @@ import CPUSimulator.define_instructions
 class Assembler:
     ADDRESS_DEFINITION = 256
     LABEL_DEFINITION = 257
-    #CALL_OR_JMP_TO_LABEL = 258
-    CALL_TO_LABEL = 258
-    JMP_TO_LABEL = 262
+
+    MEMORY_LABEL = 258
     
     DATABYTES = 259
     DATASTRING = 260
-    MEMORY_LABEL = 261
+    DATAWORDS = 261
     
     def __init__(self,filename,memory,text):
         self.lines = []
@@ -77,17 +76,25 @@ class Assembler:
         self.labels[newlabel]=address
         return True
 
-    def add_call_or_jmp_reference(self, label, address):
-        # 'address' is the memory address of the call_instruction (not the label address, we don't know that necessarily yet)
-        jmpto = None
-        if label in self.labels:
-            jmpto = self.labels[label]
+    def add_call_or_jmp_reference(self, prelabel, label, address,offset,pureData=False):
+        # 'address' is the memory address of the position in code (not the label address, we don't know that necessarily yet)
+        if label in self.labels:            
+            myline = prelabel+"0x"+format(self.labels[label], '04x')
+        else:
+            self.labelref.append((label,address+offset)) # record where the call/jmp label instruction was to backfill address later
+            myline = prelabel+"0x0000"
 
-        if jmpto==None:
-            self.labelref.append((label,address)) # record where the call/jmp label instruction was to backfill address later
-            return False
-        
-        return True
+        if pureData:
+            number = int(myline,16)
+            newasm = [(number>>8)&0xff,number&0xff]
+        else:
+            newasm = self.machinecode(myline) # add dummy address as padding for now
+
+        for byte in newasm:
+            self.write_memory(address,byte)#self.memory[pointer]=byte
+            address+=1
+
+        return address
 
     def backfill_references(self):
         for reference in self.labelref:
@@ -109,15 +116,7 @@ class Assembler:
         INT_opcode = self.machinecode("INT")[0]
         RETI_opcode = self.machinecode("RETI")[0]
         PUSHPC_opcode = self.machinecode("PUSH_PC+1")[0]
-        CALLs =["CALL Z","CALL NZ","CALL E","CALL NE","CALL G","CALL GE","CALL L","CALL LE","CALL C","CALL NC"]
-        CALL_opcodes = []
-        for call in CALLs:
-            CALL_opcodes.append(self.machinecode(call+",0x0000")[0])
-            CALL_opcodes.append(self.machinecode(call+",__label__")[0])            
-            
-        CALL_opcodes.append(self.machinecode("CALL 0x0000")[0])
-        CALL_opcodes.append(self.machinecode("CALL __label__")[0])
-
+        
         pointer = 0
         for line_number,line in enumerate(self.lines):
             cleaned_line = self.clean_line(line)
@@ -136,10 +135,11 @@ class Assembler:
                     return False
                 if opcode==INT_opcode and was_PUSHPC==False:
                     print("INT must be preceeded by 'PUSH_PC+1', line number:", line_number)
-                if opcode in CALL_opcodes and was_PUSHPC==False:
-                    print(line)
-                    print("CALLs must be preceeded by 'PUSH_PC+1', line number:", line_number)
-                    return False
+##                if opcode in CALL_opcodes and was_PUSHPC==False:
+                if len(cleaned_line)>=4: ## Detect CALLs this way
+                    if cleaned_line[:4].upper()=="CALL" and was_PUSHPC==False:
+                        print("CALLs must be preceeded by 'PUSH_PC+1', line number:", line_number)
+                        return False
                 if opcode==RETI_opcode and was_POPT:
                     print("RETI should NOT be preceeded by 'POP T', line number:", line_number)
                 
@@ -158,23 +158,10 @@ class Assembler:
                 elif opcode==self.LABEL_DEFINITION:
                     if not self.add_label(asm[1],pointer):
                         return False
-##                elif opcode == self.CALL_OR_JMP_TO_LABEL or opcode == self.MEMORY_LABEL:
-                elif opcode == self.CALL_TO_LABEL or opcode == self.JMP_TO_LABEL or opcode == self.MEMORY_LABEL:
-                    found = self.add_call_or_jmp_reference(asm[2],pointer+1)
-                    
-                    space=""
-                    if opcode==self.CALL_TO_LABEL or opcode==self.JMP_TO_LABEL: space=" "
-                    
-                    if found:
-                        myline = asm[1]+space+"0x"+format(self.labels[asm[2]], '04x')
-                    else:
-                        myline = asm[1]+space+"0x0000"
-                        
-                    newasm = self.machinecode(myline) # add dummy address as padding for now
-                    for byte in newasm:
-                        self.write_memory(pointer,byte)#self.memory[pointer]=byte
-                        pointer+=1
-                elif opcode == self.DATABYTES:
+
+                elif opcode == self.MEMORY_LABEL:
+                    pointer = self.add_call_or_jmp_reference(asm[1],asm[2],pointer,1,pureData=False)
+                elif opcode == self.DATABYTES or opcode == self.DATAWORDS:
                     #print(asm[1],type(asm[1]))
                     asm[1]=str(asm[1])
                     
@@ -184,13 +171,18 @@ class Assembler:
                         bytelist = [str(asm[1])]
                    
                     for databyte in bytelist:
-                        int_byte = self.process_databyte(databyte.strip())
-                        if int_byte==False:
-                            print("Could not process data byte '"+databyte+"' at line number:",line_number)
+                        int_bytelist,status = self.process_databyte(databyte.strip(),opcode)
+                        if status==0:
+                            print("Could not process data byte/word '"+databyte+"' at line number:",line_number)
                             return False
-                        self.write_memory(pointer,int_byte)#self.memory[pointer]=int_byte
-                        print("Writing:",pointer,int_byte)
-                        pointer+=1
+                        elif status==1:
+                            for byte in int_bytelist:
+                                self.write_memory(pointer,byte)
+                                #print("Writing:",pointer,byte)
+                                pointer+=1
+                        elif status==2:
+                            # treat as a memory label
+                            pointer = self.add_call_or_jmp_reference("",int_bytelist,pointer,0,pureData=True)
                 elif opcode == self.DATASTRING:
                     datastr = asm[1]
                     for character in asm[1]:
@@ -211,19 +203,37 @@ class Assembler:
         if self.maxPOS<position:
             self.maxPOS=position
         
-    def process_databyte(self, data_byte):
+    def process_databyte(self, data_byte, data_type):
         # hex byte
-        hex_regex = "^0x[0-9A-Fa-f][0-9A-Fa-f]$"
+        if data_type==self.DATABYTES:
+            hex_regex = "^0x([0-9A-Fa-f]{2})$"
+        elif data_type==self.DATAWORDS:
+            hex_regex = "^0x([0-9A-Fa-f]{2})([0-9A-Fa-f]{2})$"
+        else:
+            print("ERROR! data_type not recognise")
+            return (False,0)
+    
         match = re.match(hex_regex,data_byte,re.IGNORECASE)
         if match:
-            return int(match.group(0),16)
+            byte_list = [int(m,16) for m in match.groups()]
+            return (byte_list,1)#int(match.group(0),16)
         
-        # integer (base-10)
+        # integer (base-10)  
         int_regex = "^([0-9]*)$"
         match = re.match(int_regex,data_byte,re.IGNORECASE)
         if match:
-            return(int(match.group(1)))
+            num = int(match.group(1))
+            if data_type==self.DATABYTES:
+                byte_list = [num]
+            elif data_type==self.DATAWORDS:
+                byte_list = [(num>>8)&0xff,num&0xff]
+            return(byte_list,1)
 
+        if data_type==self.DATAWORDS:
+            #If got here then treat text as a memory label
+            match = re.match("^(.*)$",data_byte,re.IGNORECASE) # Should always match?
+            if match:
+                return (match.group(0),2)
         return False
 
     def make_regex(self):
@@ -245,9 +255,9 @@ class Assembler:
             # hex matching on numbers and generate call/jmp regex for text?
             self.asmregex.append((regex,machine_code))
 
-            self.lookupASM.append(opcode) # useful for debug purposes
+            self.lookupASM.append(opcode) # useful for debug purposes - appears never to be used!
 
-        self.asmregex.append(("^0x([0-9]{4}):$",self.ADDRESS_DEFINITION))
+        self.asmregex.append(("^0x([0-9A-Fa-f]{4}):$",self.ADDRESS_DEFINITION))
         self.asmregex.append(("^(.*):$",self.LABEL_DEFINITION))
 
         JMPs = ["JZ","JNZ","JE","JNE","JG","JGE","JL","JLE","JMP","JC","JNC"]
@@ -256,15 +266,16 @@ class Assembler:
         callsAndjmps = JMPs+CALLs
         
         for instruction in CALLs:
-            regex = "^("+instruction+") ([^0^x].*)$"
-            self.asmregex.append((regex,self.CALL_TO_LABEL))
+            regex = "^("+instruction+" )([^0^x].*)$"
+            self.asmregex.append((regex,self.MEMORY_LABEL))
 
         for instruction in JMPs:
-            regex = "^("+instruction+") ([^0^x].*)$"
-            self.asmregex.append((regex,self.JMP_TO_LABEL))        
+            regex = "^("+instruction+" )([^0^x].*)$"
+            self.asmregex.append((regex,self.MEMORY_LABEL))        
 
         self.asmregex.append(("^db (.*)$",self.DATABYTES))
         self.asmregex.append(("^dstr '(.*)'$",self.DATASTRING))
+        self.asmregex.append(("^dw (.*)$",self.DATAWORDS))
 
         # use memory labels with some instructions:
         self.asmregex.append(("^(MOV r0r1,)([^0^x].*)$",self.MEMORY_LABEL)) # this could be generalised in future to all 16-bit memory reference instructions
@@ -336,7 +347,8 @@ if __name__=="__main__":
     #from .define_instructions import define_instructions
     memory = bytearray(0x10000)
     #asm = Assembler("asm files\\boot.txt",memory,"")
-    asm = Assembler("G:\\test.asm",memory,"")
+    filename="test.asm"#"G:\\test.asm"
+    asm = Assembler(filename,memory,"")
     success = asm.assemble()
     if success:
         print("Assembling successful")
