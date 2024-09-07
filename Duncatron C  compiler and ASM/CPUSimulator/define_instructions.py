@@ -895,6 +895,8 @@ def add_UART():
     Ureg_mask = (0<<7)|(0<<6)|(1<<2) # Uout
 
     reg_names_UART = ["A","B"]#,"r0","r1","r2","r3","r4","r5"]
+
+    movUB_pos = -1
     for reg_index, reg in enumerate(reg_names_UART):
         new_ins = "MOV U,"+reg
 
@@ -904,8 +906,14 @@ def add_UART():
             add_instruction(new_ins,pos=None,addresses=[x for x in range(0,256) if x&MASK_IN==0],microcode_lines=[FETCH0,FETCH1,["Ao","INen"]])
         else:
             # MOV U,REG 0b0 0 o2 o1 o0 0 x x # Uin = 0b000
-            add_instruction(new_ins,pos=None,addresses=[x for x in range(0,256) if x&(MASK_IN|MASK_OUT)==(reg_index<<3)],microcode_lines=[FETCH0,FETCH1,["OUTen","INen"]])
-        
+            replace_pos = add_instruction(new_ins,pos=None,addresses=[x for x in range(0,256) if x&(MASK_IN|MASK_OUT)==(reg_index<<3)],microcode_lines=[FETCH0,FETCH1,["OUTen","INen"]])
+            if reg=="B": movUB_pos=replace_pos
+
+    #replace MOV U,B with POP PC
+    instruction_set[movUB_pos]="" # wipe position to re-use
+    add_instruction("POP PC",pos=movUB_pos,microcode_lines=[FETCH0,FETCH1,["SPo","MARi"],["Ro","T_EN","SPinc"],["SPo","MARi"],["Ro","T_EN","T_HL","T_IO","PCi","SPinc"]])
+    
+            
     add_instruction("MOV U,0x@@",pos=None,addresses=[x for x in range(0,256) if x&MASK_IN==0],microcode_lines=[FETCH0,FETCH1,["PCo","MARi"],["Ro","INen","PCinc"]])
     # MOV A,U = 0b00xxx1xx ; out = xxx (Ai), in = 0b001 (Uout)
     add_instruction("MOV A,U",pos=None,addresses=[x for x in range(0,256) if x&MASK_IN==Ureg_mask],microcode_lines=[FETCH0,FETCH1,["Ai","INen"]])
