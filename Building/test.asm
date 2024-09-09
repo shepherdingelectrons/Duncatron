@@ -1,14 +1,17 @@
 mov r0r1,jump_table
 mov A,0x00 ; index into jump table
 shl A
-add A,r1 ; add r0r1+A
+add A,r1 ; add r0r1+A --> A is jump table index
 mov r1,A
 mov A,r0
 addc A,0x00
-mov r0,A
+mov r0,A 	; r0r1 is now the pointer to the desired jump label
 
-push r0
-push r1
+mov A,[r0r1]	; HIGH byte of desired jump label
+push A
+inc r0r1
+mov A,[r0r1]	; LOW byte of desired jump label
+push A
 pop PC ; jmp init!
 
 db 0x06,0x09,0x0A,69,42
