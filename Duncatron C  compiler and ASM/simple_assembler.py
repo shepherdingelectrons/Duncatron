@@ -347,11 +347,13 @@ if __name__=="__main__":
     #from .define_instructions import define_instructions
     memory = bytearray(0x10000)
     #asm = Assembler("asm files\\boot.txt",memory,"")
-    filename="test.asm"#"G:\\test.asm"
+    filename="G:\\test.asm"
     asm = Assembler(filename,memory,"")
     success = asm.assemble()
     if success:
         print("Assembling successful")
+        for lab in asm.labels:
+            print(lab,":",hex(asm.labels[lab]))
         asm.burn_binary()
     else:
         print("Assembling failed!")

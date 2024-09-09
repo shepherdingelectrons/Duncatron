@@ -915,7 +915,7 @@ def add_UART():
     # Put low byte into B reg temporarily
     # Put high byte into T reg
     # Output B onto low, T onto high bus, clock into PC
-    add_instruction("POP PC",pos=movUB_pos,microcode_lines=[FETCH0,FETCH1,["SPo","MARi"],["Ro","Bi","SPinc"],["SPo","MARi"],["Ro","T_EN","SPinc"],["OUTen","T_EN","T_HL","T_IO","PCi"]]
+    add_instruction("POP PC",pos=movUB_pos,microcode_lines=[FETCH0,FETCH1,["SPo","MARi"],["Ro","Bi","SPinc"],["SPo","MARi"],["Ro","T_EN","SPinc"],["OUTen","T_EN","T_HL","T_IO","PCi"]])
                     #[FETCH0,FETCH1,["SPo","MARi"],["Ro","T_EN","SPinc"],["SPo","MARi"],["Ro","T_EN","T_HL","T_IO","PCi","SPinc"]]
     
             

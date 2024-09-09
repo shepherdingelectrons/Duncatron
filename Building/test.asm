@@ -1,5 +1,5 @@
 mov r0r1,jump_table
-mov A,0x00 ; index into jump table
+mov A,0x02 ; index into jump table
 shl A
 add A,r1 ; add r0r1+A --> A is jump table index
 mov r1,A
@@ -14,13 +14,19 @@ mov A,[r0r1]	; LOW byte of desired jump label
 push A
 pop PC ; jmp init!
 
+mov U,0x43 ; C
+
 db 0x06,0x09,0x0A,69,42
 dw 0x1234,0x6942,258
 
 jump_table:
-dw init,main_loop,handle_input,0x4321,513,input_str;testing
+dw wrong,wrong,init,wrong,wrong,0x4321,513,input_str
+
+wrong:
+mov U,0x44 ;D
 
 init:
+mov U,0x45 ;E
 mov r0r1,INTERUPT; setup interrupt jump vector
 mov [0x00],r0	; Zero page 0x00
 mov [0x01],r1	; Zero page 0x01
