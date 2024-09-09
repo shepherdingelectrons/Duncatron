@@ -911,7 +911,12 @@ def add_UART():
 
     #replace MOV U,B with POP PC
     instruction_set[movUB_pos]="" # wipe position to re-use
-    add_instruction("POP PC",pos=movUB_pos,microcode_lines=[FETCH0,FETCH1,["SPo","MARi"],["Ro","T_EN","SPinc"],["SPo","MARi"],["Ro","T_EN","T_HL","T_IO","PCi","SPinc"]])
+    ## order is swapped compared: most recent on stack is low (rather than high byte)
+    # Put low byte into B reg temporarily
+    # Put high byte into T reg
+    # Output B onto low, T onto high bus, clock into PC
+    add_instruction("POP PC",pos=movUB_pos,microcode_lines=[FETCH0,FETCH1,["SPo","MARi"],["Ro","Bi","SPinc"],["SPo","MARi"],["Ro","T_EN","SPinc"],["OUTen","T_EN","T_HL","T_IO","PCi"]]
+                    #[FETCH0,FETCH1,["SPo","MARi"],["Ro","T_EN","SPinc"],["SPo","MARi"],["Ro","T_EN","T_HL","T_IO","PCi","SPinc"]]
     
             
     add_instruction("MOV U,0x@@",pos=None,addresses=[x for x in range(0,256) if x&MASK_IN==0],microcode_lines=[FETCH0,FETCH1,["PCo","MARi"],["Ro","INen","PCinc"]])
