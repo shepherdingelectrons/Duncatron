@@ -184,8 +184,8 @@ class Assembler:
                             # treat as a memory label
                             pointer = self.add_call_or_jmp_reference("",int_bytelist,pointer,0,pureData=True)
                 elif opcode == self.DATASTRING:
-                    datastr = asm[1]
-                    for character in asm[1]:
+                    datastr = self.process_datastring(asm[1])
+                    for character in datastr:
                         self.write_memory(pointer,ord(character))#self.memory[pointer]=ord(character)
                         pointer+=1
                     self.write_memory(pointer,0)#self.memory[pointer]=0 # Add zero terminator automatically
@@ -202,7 +202,21 @@ class Assembler:
         self.memory[position]=byte
         if self.maxPOS<position:
             self.maxPOS=position
-        
+
+    def process_datastring(self, data_str):
+        # Check for ',' not in quotation marks and concatenate, return string
+        in_quote = 1 # Inside a quote mark by default
+        return_str = ""
+        for char in data_str:
+            if char=="'":
+                in_quote = 1-in_quote
+                if in_quote: # Just started a new string so terminate the old one
+                    return_str+=chr(0)
+            else:
+                if in_quote:
+                    return_str+=char # Only add characters in quotes
+        return return_str
+    
     def process_databyte(self, data_byte, data_type):
         # hex byte
         if data_type==self.DATABYTES:
@@ -229,12 +243,34 @@ class Assembler:
                 byte_list = [(num>>8)&0xff,num&0xff]
             return(byte_list,1)
 
+        # array, int size
+        array_int = "^\[([0-9]*)\]$" # i.e [33]
+        match = re.match(array_int,data_byte,re.IGNORECASE)
+        if match:
+            array_size = int(match.group(1))
+            if data_type==self.DATABYTES:
+                return ([0x00]*array_size,1)
+            if data_type==self.DATAWORDS:
+                return ([0x00]*array_size*2,1)
+
+        # array, hex size
+        array_hex = "^\[0x([0-9A-Fa-f]{1,4})\]$" # i.e. db [0xff],[0x2],[0x100],0x[23ad]
+        match = re.match(array_hex,data_byte,re.IGNORECASE)
+        if match:
+            array_size = int(match.group(1),16)
+            
+            if data_type==self.DATABYTES:
+                return ([0x00]*array_size,1)
+            if data_type==self.DATAWORDS:
+                return ([0x00]*array_size*2,1)
+        
         if data_type==self.DATAWORDS:
             #If got here then treat text as a memory label
             match = re.match("^(.*)$",data_byte,re.IGNORECASE) # Should always match?
             if match:
                 return (match.group(0),2)
-        return False
+        print("got here",data_byte,data_type)
+        return (False,0)
 
     def make_regex(self):
         if len(self.instruction_str)==0:
@@ -347,13 +383,14 @@ if __name__=="__main__":
     #from .define_instructions import define_instructions
     memory = bytearray(0x10000)
     #asm = Assembler("asm files\\boot.txt",memory,"")
-    filename="G:\\test.asm"
+    filename="test.asm"#"G:\\test.asm"
+        
     asm = Assembler(filename,memory,"")
     success = asm.assemble()
     if success:
         print("Assembling successful")
-        for lab in asm.labels:
-            print(lab,":",hex(asm.labels[lab]))
+##        for lab in asm.labels:
+##            print(lab,":",hex(asm.labels[lab]))
         asm.burn_binary()
     else:
         print("Assembling failed!")
