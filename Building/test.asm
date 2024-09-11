@@ -256,7 +256,7 @@ print_hex.exit:
 ;### Programming mode
 ;### Will be useful to have a HEX byte print function
 program_mode:
-mov r2,0x0A	; 10 lines
+mov r2,0x08	; 10 lines
 mov r0r1, program_mode_str
 program_mode.display_text:
 	push_pc+1
@@ -277,7 +277,8 @@ program_mode.loop:
 	cmp A,0x01
 	;push_pc+1
 	;call_z execute_cmd ; process the commands in some way
-
+	; perhaps for efficiency could have a command string like so: 'h#|l#|r|w#...' etc match received string 
+	; to the sub-strings separated by | character rather than separate the command strings
 	jmp program_mode.loop
 
 ; data labels don't have to be page-aligned
@@ -290,14 +291,23 @@ goodbye_str: dstr 'Bye!'
 error_str: dstr 'ERROR'
 program_str: dstr 'prog'
 program_mode_str:
-dstr 'Entering PROGRAMMING mode' ; this comment gets ignored
-dstr 'Commands:	h#  ; set high address to # (#=byte)'
+dstr 'Entering PROGRAMMING mode. Commands:' ; this comment gets ignored
+dstr '			h#  ; set high address to # (#=byte)'
 dstr '			l#  ; set low address to #'
-dstr '			a## ; set 16-bit address to ##'
+dstr '			r   ; read the byte at current address'
+dstr '			w#  ; write the byte @ at current address'
 dstr '			i   ; increment address +1'
 dstr '			d   ; decrement address -1'
-dstr '			w#  ; write the byte @ at current address'
-dstr '			r   ; read the byte at current address'
 dstr '			j   ; jump to current address'
-dstr '			u   ; uart serial mode (no carriage return)'
-input_str: ;
+program_commands:
+dstr 'h#','l#','r','w#','i','d','j' ;Multiple strings like this now supported 
+db 0xff ; test packing byte
+input_str: db [129]; Need to have some kind of array notation for making fixed sizes, i.e. db [129]
+db 5,[10],69 ; Means insert 0x00 for 129 bytes to reserve memory (128+zero byte)
+dstr 'TEST'
+dw 1,2,3,4,5,[0x01],6,7,8,9
+dw [0xA],42,[7],69
+
+0x8000:
+zeropage:
+; Use of variables in zero page here
