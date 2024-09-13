@@ -1235,8 +1235,9 @@ for i in free_ins:
     aluX = ((1-o2)<<3)|(i0<<2)|(a1<<1)|(a0<<0)
 #ALU_INSTRUCTIONS    
     print("Op=",i,bin(i),"in_reg=",reg_names_IN[in_reg],"out_reg=",reg_names_OUT[out_reg],"in_regX=",reg_names_IN[in_regX],"out_regX=",reg_names_OUT[out_regX],"ALU=",ALU_INSTRUCTIONS[alu],"ALUX=",ALU_INSTRUCTIONS[aluX])
+
 if write_EEPROM:
     write_EEPROM_block(0,textmode=True)
     write_EEPROM_block(1,textmode=True)
     write_EEPROM_block(2,textmode=True)
-
+print("Instructon set completed")

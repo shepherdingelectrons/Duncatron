@@ -109,8 +109,9 @@ class Assembler:
         return True
     
     def assemble(self):
+        print("Making regex...")
         if not self.make_regex(): return False
-
+        print("Regex complete")
         POPT_opcode = self.machinecode("POP T")[0]
         RET_opcode = self.machinecode("RET")[0]
         INT_opcode = self.machinecode("INT")[0]
@@ -123,8 +124,9 @@ class Assembler:
             if cleaned_line==False:
                 print("Error processing line #"+str(line_number)+": "+line)
                 return False
-    
+
             asm = self.machinecode(cleaned_line)
+            print(line_number)
             if asm:
                 opcode = asm[0]
 
@@ -332,11 +334,13 @@ class Assembler:
             if match_result:
                 machine_code.append(opcode)
                 for match in match_result.groups():
-                    try:
-                        machine_code.append(int("0x"+match,16))
-                    except ValueError:
-                        machine_code.append(match)
-                    
+                    if opcode!=self.DATASTRING:
+                        try:
+                            machine_code.append(int("0x"+match,16))
+                        except ValueError:
+                            machine_code.append(match)
+                    else:
+                        machine_code.append(match) # Need to make sure strings (i.e. 'af' don't get turned into ints
                 matched=True
         if matched==False:
             return False
@@ -383,7 +387,7 @@ if __name__=="__main__":
     #from .define_instructions import define_instructions
     memory = bytearray(0x10000)
     #asm = Assembler("asm files\\boot.txt",memory,"")
-    filename="test.asm"#"G:\\test.asm"
+    filename="G:\\test.asm"
         
     asm = Assembler(filename,memory,"")
     success = asm.assemble()

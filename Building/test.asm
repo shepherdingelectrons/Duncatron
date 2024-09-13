@@ -252,61 +252,6 @@ print_hex.process:	; takes 4 LSBs of A and displays hex character
 print_hex.exit:
 	POP T
 	RET
-
-;### Programming mode
-;### Will be useful to have a HEX byte print function
-program_mode:
-mov r2,0x01	; 10 lines
-mov r0r1, program_mode_str
-program_mode.display_text:
-	push_pc+1
-	call print_str	; Line 1-10
-	inc r0r1
-	dec r2
-	jnz program_mode.display_text
-
-mov r2r3,input_str ; setup new input string
-mov r4,0x00
-mov U,0x3E ; ">"
-
-; ################ programming main() ####################
-program_mode.loop:
-	push_pc+1
-	call handle_input	; returns r5=0 if no string, else r5=1
-	mov A,r5
-	cmp A,0x01
-	push_pc+1
-	call_z program_mode.process_str ; process the commands in some way
-	jmp program_mode.loop
-
-program_mode.process_str:
-	mov r4,0x00 ; command index
-	mov r0r1,program_commands
-	mov r2r3,input_str	; This will loop through all the commands ultimately - just test 1st command for now
-	push_pc+1			; NB we might not get to the end of the command string 
-	call cmp_str_special
-	mov A,r5
-	cmp A,0x00
-	jz program_mode.unknown_cmd ; No recognised command
-	; In case of success:
-	mov A,0x41 ; 0x41 = 'A'
-	add A,r4; 0x41 ; add 'A' to command index r4
-	mov U,A	
-	mov A,[0x02] ; display last wild card in the zero page
-	mov U,A
-	jmp program_mode.reset_prompt
-
-program_mode.unknown_cmd:
-	mov r0r1,error_str
-	push_pc+1
-	call print_str
-	
-program_mode.reset_prompt:
-	mov r2r3,input_str ; setup new input string
-	mov r4,0x00
-	mov U,0x3E ; ">"
-	pop T
-	ret
 ;####  General helper function to compare two strings and save the special character # in the zero page
 ;####  r0r1 pointer to zero-terminated string1 (might contain wild-card character #, could pass on as r4?)
 ;####  r2r3 pointer to zero-terminated string2
@@ -343,6 +288,91 @@ cmp_str_special.wildcard:
 cmp_str_special.false:
 	mov r5,0x00
 cmp_str_special.exit:
+	pop T
+	ret
+	
+;### Programming mode
+program_mode:
+mov r2,0x01	; 10 lines
+mov r0r1, program_mode_str
+program_mode.display_text:
+	push_pc+1
+	call print_str	; Line 1-10
+	inc r0r1
+	dec r2
+	jnz program_mode.display_text
+
+mov r2r3,input_str ; setup new input string
+mov r4,0x00
+mov U,0x3E ; ">"
+
+; ################ programming main() ####################
+program_mode.loop:
+	push_pc+1
+	call handle_input	; returns r5=0 if no string, else r5=1
+	mov A,r5
+	cmp A,0x01
+	push_pc+1
+	call_z program_mode.process_str ; process the commands in some way
+	jmp program_mode.loop
+
+program_mode.process_str:
+;	Get address of command string using r4 as an index
+	mov r4,0x00 ; command index = 0 initially
+
+program_mode.process_loop:
+	mov r2r3, program_cmd_table ; use r2r3 temporarily 
+	mov A,r4
+	shl A	;A = index * 2
+	add A,r3
+	mov r3,A
+	mov A,r2
+	addc A,0x00
+	mov r2,A	; r2r3 = program_cmd_table + 2*r4
+	
+	; need to get address at r2r3 into r0r1:
+	mov A,[r2r3]	; HIGH
+	mov r0,A
+	inc r2r3
+	mov A,[r2r3]	; LOW
+	mov r1,A
+	
+	; r0r1 now holds the actual address that was pointed to by r2r3
+	
+	mov r2r3,input_str	; reset input string pointer
+	push_pc+1			
+	call cmp_str_special	
+	mov A,r5
+	cmp A,0x00
+	jnz program_mode.success ; r5 = 1 means command recognised
+
+	mov A,r4	; loop counter
+	inc A
+	mov r4,A
+	add A,0x61	; 0x61 = 'a'
+	mov U,A
+	
+	mov A,r4
+	cmp A,0x09
+	jnz program_mode.process_loop
+	; if we got here then went through all strings and didn't match
+	mov r0r1,error_str
+	push_pc+1
+	call print_str
+	jmp program_mode.reset_prompt
+	
+program_mode.success:	; Use r4 as an index for a jump table
+	mov A,0x41 ; 0x41 = 'A'
+	add A,r4; 0x41 ; add 'A' to command index r4
+	mov U,A	
+	mov A,[0x02] ; display last wild card in the zero page
+	mov U,A
+	;jmp program_mode.reset_prompt
+
+program_mode.reset_prompt:
+	mov r2r3,input_str ; setup new input string
+	mov r4,0x00
+	mov U,0x3E ; ">"
 	pop T
 	ret
 
@@ -385,8 +415,19 @@ dstr '			i   ; increment address +1'
 dstr '			d   ; decrement address -1'
 dstr '			j   ; jump to current address'
 dstr '			eoc	; display end of code address'
-program_commands:
-dstr 'print(#)','h#','l#','r','w#','i','d','j','eoc' ;Multiple strings like this now supported 
+;program_commands:	
+program_cmd_table:
+dw cmd0,cmd1,cmd2,cmd3,cmd4,cmd5,cmd6,cmd7,cmd8
+cmd0: dstr 'h#'
+cmd1: dstr 'l#'
+cmd2: dstr 'a'
+cmd3: dstr 'r'
+cmd4: dstr 'w#'
+cmd5: dstr 'i'
+cmd6: dstr 'd'
+cmd7: dstr 'j'
+cmd8: dstr 'eoc'
+
 ;dstr 'h#|l#|r|w#|i||d|j
 input_str: db [129]; Need to have some kind of array notation for making fixed sizes, i.e. db [129]
 END_OF_CODE: ; Label useful so we know where we can safely start programming
