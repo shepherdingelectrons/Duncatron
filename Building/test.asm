@@ -256,7 +256,7 @@ print_hex.exit:
 ;### Programming mode
 ;### Will be useful to have a HEX byte print function
 program_mode:
-mov r2,0x08	; 10 lines
+mov r2,0x01	; 10 lines
 mov r0r1, program_mode_str
 program_mode.display_text:
 	push_pc+1
@@ -269,18 +269,102 @@ mov r2r3,input_str ; setup new input string
 mov r4,0x00
 mov U,0x3E ; ">"
 
-; ################ main() ####################
+; ################ programming main() ####################
 program_mode.loop:
 	push_pc+1
 	call handle_input	; returns r5=0 if no string, else r5=1
 	mov A,r5
 	cmp A,0x01
-	;push_pc+1
-	;call_z execute_cmd ; process the commands in some way
-	; perhaps for efficiency could have a command string like so: 'h#|l#|r|w#...' etc match received string 
-	; to the sub-strings separated by | character rather than separate the command strings
+	push_pc+1
+	call_z program_mode.process_str ; process the commands in some way
 	jmp program_mode.loop
 
+program_mode.process_str:
+	mov r4,0x00 ; command index
+	mov r0r1,program_commands
+	mov r2r3,input_str	; This will loop through all the commands ultimately - just test 1st command for now
+	push_pc+1			; NB we might not get to the end of the command string 
+	call cmp_str_special
+	mov A,r5
+	cmp A,0x00
+	jz program_mode.unknown_cmd ; No recognised command
+	; In case of success:
+	mov A,0x41 ; 0x41 = 'A'
+	add A,r4; 0x41 ; add 'A' to command index r4
+	mov U,A	
+	mov A,[0x02] ; display last wild card in the zero page
+	mov U,A
+	jmp program_mode.reset_prompt
+
+program_mode.unknown_cmd:
+	mov r0r1,error_str
+	push_pc+1
+	call print_str
+	
+program_mode.reset_prompt:
+	mov r2r3,input_str ; setup new input string
+	mov r4,0x00
+	mov U,0x3E ; ">"
+	pop T
+	ret
+;####  General helper function to compare two strings and save the special character # in the zero page
+;####  r0r1 pointer to zero-terminated string1 (might contain wild-card character #, could pass on as r4?)
+;####  r2r3 pointer to zero-terminated string2
+;####  r5 is 1 if a match else zero
+;####  Usage:
+;####  r0r1 = 'print(#)'
+;####  r2r3 = 'print(A)'
+;####  zero page address (0x02) would contain 'A' and r5=1 would indicate a successful match
+
+cmp_str_special:
+	mov r5,0x01	; True until found otherwise
+cmp_str_special.start:
+	mov A,[r0r1]
+	cmp A,0x23 ; #
+	jz cmp_str_special.wildcard
+	
+	mov B,A
+	mov A,[r2r3] 
+	cmp A,B ; test for same character
+	jnz cmp_str_special.false ; not same character
+	cmp A,0x00	; if we got here then A=B 
+	jz cmp_str_special.exit ;A=B=0x00
+	inc r0r1
+	inc r2r3
+	jmp cmp_str_special.start
+	
+cmp_str_special.wildcard:
+	mov A,[r2r3]	; get wildcard character from r2r3 string
+	mov [0x02],A	; put into zero-page address 0x02 (hard coded for now)
+	inc r0r1
+	inc r2r3
+	jmp cmp_str_special.start
+	
+cmp_str_special.false:
+	mov r5,0x00
+cmp_str_special.exit:
+	pop T
+	ret
+
+program_mode.jump_table:
+dw program_mode.set_high,program_mode.set_low,program_mode.readbyte,program_mode.writebyte
+dw program_mode.inc,program_mode.dec,program_mode.jump ; for readability
+
+program_mode.set_high:
+	nop
+program_mode.set_low:
+	nop
+program_mode.readbyte:
+	nop
+program_mode.writebyte:
+	nop
+program_mode.inc:
+	nop
+program_mode.dec:
+	nop
+program_mode.jump:
+	nop
+	
 ; data labels don't have to be page-aligned
 welcome: dstr 'Welcome to Duncatron v1.0'
 ready: dstr 'READY'
@@ -294,20 +378,49 @@ program_mode_str:
 dstr 'Entering PROGRAMMING mode. Commands:' ; this comment gets ignored
 dstr '			h#  ; set high address to # (#=byte)'
 dstr '			l#  ; set low address to #'
+dstr '			a	; display current address'
 dstr '			r   ; read the byte at current address'
 dstr '			w#  ; write the byte @ at current address'
 dstr '			i   ; increment address +1'
 dstr '			d   ; decrement address -1'
 dstr '			j   ; jump to current address'
+dstr '			eoc	; display end of code address'
 program_commands:
-dstr 'h#','l#','r','w#','i','d','j' ;Multiple strings like this now supported 
-db 0xff ; test packing byte
+dstr 'print(#)','h#','l#','r','w#','i','d','j','eoc' ;Multiple strings like this now supported 
+;dstr 'h#|l#|r|w#|i||d|j
 input_str: db [129]; Need to have some kind of array notation for making fixed sizes, i.e. db [129]
-db 5,[10],69 ; Means insert 0x00 for 129 bytes to reserve memory (128+zero byte)
-dstr 'TEST'
-dw 1,2,3,4,5,[0x01],6,7,8,9
-dw [0xA],42,[7],69
+END_OF_CODE: ; Label useful so we know where we can safely start programming
+; can have a command, i.e. "eoc" that produces:
+; > eoc
+; print_eoc:
+; mov r0r1,END_OF_CODE
+; mov r5,0x01	; print 0x in print_hex
+; mov r4,r0	; Display interrupt vector address
+; push_pc+1
+; call print_hex
+; mov r5,0x00	; don't print 0x in print_hex
+; mov r4,r1	; Display interrupt vector address
+; push_pc+1
+; call print_hex
 
-0x8000:
-zeropage:
-; Use of variables in zero page here
+; Consider adding some support for constants, can use as variables in 16-bit memory and 8-bit zero-page addresses.
+; (1) Add assignment and typing by 8 or 16-bit
+; (2) Add regex for zeropage addressing and using labels rather than 0x@@ constants
+; i.e.:
+; ZEROPAGE 		= 0x8000 ; for example
+; constant16	= 0x1234
+; RESERVED 		= 0x00 	; for interrupt vector
+; loop_index 	= 0x02 ; one byte
+; my_var1 		= 0x03 ; two bytes
+; my_var2		= 0x05 ; two bytes
+; test0			= 0x07 ; one byte
+
+; then can have:
+; mov A, [loop_index]
+; inc A
+; mov [loop_index],A
+; 
+; or:
+; mov r0r1,constant16
+; jmp ZEROPAGE
+
