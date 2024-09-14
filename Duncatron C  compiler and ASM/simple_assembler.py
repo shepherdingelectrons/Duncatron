@@ -393,8 +393,8 @@ if __name__=="__main__":
     success = asm.assemble()
     if success:
         print("Assembling successful")
-##        for lab in asm.labels:
-##            print(lab,":",hex(asm.labels[lab]))
+        for lab in asm.labels:
+            print(lab,":",hex(asm.labels[lab]))
         asm.burn_binary()
     else:
         print("Assembling failed!")

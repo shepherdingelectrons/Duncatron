@@ -1,53 +1,11 @@
-mov r0r1,jump_table
-mov A,0x02 ; index into jump table
-shl A
-add A,r1 ; add r0r1+A --> A is jump table index
-mov r1,A
-mov A,r0
-addc A,0x00
-mov r0,A 	; r0r1 is now the pointer to the desired jump label
-
-mov A,[r0r1]	; HIGH byte of desired jump label
-push A
-inc r0r1
-mov A,[r0r1]	; LOW byte of desired jump label
-push A
-pop PC ; jmp init!
-
-mov U,0x43 ; C
-
-db 0x06,0x09,0x0A,69,42
-dw 0x1234,0x6942,258
-
-jump_table:
-dw wrong,wrong,init,wrong,wrong,0x4321,513,input_str
-
-wrong:
-mov U,0x44 ;D
-
 init:
-mov U,0x45 ;E
 mov r0r1,INTERUPT; setup interrupt jump vector
 mov [0x00],r0	; Zero page 0x00
 mov [0x01],r1	; Zero page 0x01
 
-mov r5,0x01	; print 0x in print_hex
-mov r4,r0	; Display interrupt vector address
-push_pc+1
-call print_hex
-mov r5,0x00	; no leading 0x
-mov r4,r1
-push_pc+1
-call print_hex
-
 mov r0r1,ready	; Print a greeting message
 push_pc+1
 call print_str
-
-mov A,0x50 ; P
-mov U,A
-shr A
-mov U,A    ; 0x28 = (
 
 ; New string:
 mov r2r3,input_str
@@ -293,7 +251,7 @@ cmp_str_special.exit:
 	
 ;### Programming mode
 program_mode:
-mov r2,0x01	; 10 lines
+mov r2,0x01	; 0x0A = 10 lines
 mov r0r1, program_mode_str
 program_mode.display_text:
 	push_pc+1
@@ -349,25 +307,107 @@ program_mode.process_loop:
 	mov A,r4	; loop counter
 	inc A
 	mov r4,A
-	add A,0x61	; 0x61 = 'a'
-	mov U,A
+	;add A,0x61	; 0x61 = 'a'
+	;mov U,A
 	
 	mov A,r4
-	cmp A,0x09
+	cmp A,0x09 ; 9 commands
 	jnz program_mode.process_loop
 	; if we got here then went through all strings and didn't match
 	mov r0r1,error_str
 	push_pc+1
 	call print_str
 	jmp program_mode.reset_prompt
-	
+
+program_mode.jump_table:
+dw program_mode.set_high,program_mode.set_low,program_mode.addr,program_mode.readbyte
+dw program_mode.writebyte,program_mode.inc,program_mode.dec,program_mode.jump,program_mode.eoc ; for readability
+
 program_mode.success:	; Use r4 as an index for a jump table
-	mov A,0x41 ; 0x41 = 'A'
-	add A,r4; 0x41 ; add 'A' to command index r4
-	mov U,A	
-	mov A,[0x02] ; display last wild card in the zero page
-	mov U,A
-	;jmp program_mode.reset_prompt
+	mov r0r1,program_mode.jump_table
+	mov A,r4 ; index into jump table
+	shl A
+	add A,r1 ; add r0r1+A --> A is jump table index
+	mov r1,A
+	mov A,r0
+	addc A,0x00
+	mov r0,A 	; r0r1 is now the pointer to the desired jump label
+
+	mov A,[r0r1]	; HIGH byte of desired jump label
+	push A
+	inc r0r1
+	mov A,[r0r1]	; LOW byte of desired jump label
+	push A
+	pop PC ; jmp!
+
+; current address is at zero page, 0x03 (hi) and 0x04 (low)
+program_mode.set_high:
+	mov A,[0x02]
+	mov [0x03],A
+	jmp program_mode.reset_prompt
+program_mode.set_low:
+	mov A,[0x02]
+	mov [0x04],A
+	jmp program_mode.reset_prompt
+program_mode.addr:
+	mov r5,0x01	; print 0x in print_hex
+	mov r4,[0x03]	; Display interrupt vector address
+	push_pc+1
+	call print_hex
+	mov r5,0x00	; don't print 0x in print_hex
+	mov r4,[0x04]	; Display interrupt vector address
+	push_pc+1
+	call print_hex
+	jmp program_mode.reset_prompt
+program_mode.readbyte:
+	mov r0,[0x03]
+	mov r1,[0x04]
+	mov A,[r0r1]
+	mov r5,0x01
+	mov r4,A
+	push_pc+1
+	call print_hex
+	jmp program_mode.reset_prompt
+program_mode.writebyte:
+	mov r0,[0x03]
+	mov r1,[0x04]
+	mov A,[0x02]
+	mov [r0r1],A
+	jmp program_mode.reset_prompt
+program_mode.inc:
+	mov r0,[0x03]
+	mov r1,[0x04]
+	inc r0r1
+	mov [0x03],r0
+	mov [0x04],r1
+	jmp program_mode.reset_prompt
+program_mode.dec:
+	mov A,[0x04]
+	dec A
+	mov [0x04],A
+	mov A,[0x03]
+	subc A,0x00
+	mov [0x03],A
+	jmp program_mode.reset_prompt
+program_mode.jump:
+	mov A,[0x03]	; HIGH byte of desired jump label
+	push A
+	inc r0r1
+	mov A,[0x04]	; LOW byte of desired jump label
+	push A
+	pop PC ; jmp!
+	jmp program_mode.reset_prompt
+program_mode.eoc:
+	mov r0r1,END_OF_CODE
+	mov r5,0x01	; print 0x in print_hex
+	mov r4,r0	; Display interrupt vector address
+	push_pc+1
+	call print_hex
+	mov r5,0x00	; don't print 0x in print_hex
+	mov r4,r1	; Display interrupt vector address
+	push_pc+1
+	call print_hex
+	jmp program_mode.reset_prompt
 
 program_mode.reset_prompt:
 	mov r2r3,input_str ; setup new input string
@@ -375,26 +415,12 @@ program_mode.reset_prompt:
 	mov U,0x3E ; ">"
 	pop T
 	ret
-
-program_mode.jump_table:
-dw program_mode.set_high,program_mode.set_low,program_mode.readbyte,program_mode.writebyte
-dw program_mode.inc,program_mode.dec,program_mode.jump ; for readability
-
-program_mode.set_high:
-	nop
-program_mode.set_low:
-	nop
-program_mode.readbyte:
-	nop
-program_mode.writebyte:
-	nop
-program_mode.inc:
-	nop
-program_mode.dec:
-	nop
-program_mode.jump:
-	nop
 	
+;Zero page structure:
+; 0x00-0x01 RESERVED INT VECTOR
+; 0x02 byte for specal str cmp
+; 0x03-0x04 programming current address 
+
 ; data labels don't have to be page-aligned
 welcome: dstr 'Welcome to Duncatron v1.0'
 ready: dstr 'READY'
@@ -411,10 +437,14 @@ dstr '			l#  ; set low address to #'
 dstr '			a	; display current address'
 dstr '			r   ; read the byte at current address'
 dstr '			w#  ; write the byte @ at current address'
-dstr '			i   ; increment address +1'
-dstr '			d   ; decrement address -1'
+dstr '			+   ; increment address +1'
+dstr '			-   ; decrement address -1'
 dstr '			j   ; jump to current address'
 dstr '			eoc	; display end of code address'
+
+; For programmng mode have either a human mode (default) or uart mode (whch is iis current implementation)
+; Humans input bytes by 0x##, computers by sending byte directly ie: #
+; Add multiple byte input into cmp_str_special and a routine to check byte and convert to hex
 ;program_commands:	
 program_cmd_table:
 dw cmd0,cmd1,cmd2,cmd3,cmd4,cmd5,cmd6,cmd7,cmd8
@@ -423,14 +453,22 @@ cmd1: dstr 'l#'
 cmd2: dstr 'a'
 cmd3: dstr 'r'
 cmd4: dstr 'w#'
-cmd5: dstr 'i'
-cmd6: dstr 'd'
+cmd5: dstr '+'
+cmd6: dstr '-'
 cmd7: dstr 'j'
 cmd8: dstr 'eoc'
-
+jumpstring:
+dstr 'Jumped!'
 ;dstr 'h#|l#|r|w#|i||d|j
 input_str: db [129]; Need to have some kind of array notation for making fixed sizes, i.e. db [129]
 END_OF_CODE: ; Label useful so we know where we can safely start programming
+
+;0x4161: ;0x41 =A, 0x61 =a
+;	mov r0r1,jumpstring
+;	push_pc+1
+;	call print_str
+;	jmp program_mode.reset_prompt
+
 ; can have a command, i.e. "eoc" that produces:
 ; > eoc
 ; print_eoc:
