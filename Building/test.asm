@@ -233,19 +233,21 @@ print_hex.process:	; takes 4 LSBs of A and displays hex character
 print_hex.exit:
 	POP T
 	RET
-;####  General helper function to compare two strings and save the special character # in the zero page
-;####  r0r1 pointer to zero-terminated string1 (might contain wild-card character #, could pass on as r4?)
+
+;####  General helper function cmp_str_special to compare two strings and save the special character # in the zero page
+;####  Inputs:
+;####  r0r1 pointer to zero-terminated string1 (might contain wild-card character #, which is stored at [r5++])
 ;####  r2r3 pointer to zero-terminated string2
+;####  r5 = zero-page memory address to start putting bytes into. Can't be 0x00 (which is reserved anyway)
+;####  Returns:
 ;####  r5 is non-zero if a match, else zero
 ;####  Usage:
-;####  r0r1 = 'print(#)'
-;####  r2r3 = 'print(A)'
-;####  r5 = zero-page memory address to start putting bytes into. Can't be 0x00 (which is reserved anyway)
-;####  r4 is used but pushed/popped
-;####  zero page address (0x02) would contain 'A' and r5!=0x00 would indicate a successful match
+;####  r0r1 = 'print(##)'
+;####  r2r3 = 'print(OK)'
+;####  [r5] = 'O', [r5+1]='K'. r5!=0x00 indicates a successful match
 
 cmp_str_special:
-	mov r5,0x01	; True until found otherwise
+	;mov r5,0x01	; True until found otherwise
 	push r4
 	mov r4,0x88		; ZEROPAGE (will be 0x80 on final hardware)
 cmp_str_special.start:
