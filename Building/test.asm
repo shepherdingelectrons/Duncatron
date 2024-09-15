@@ -1,69 +1,92 @@
 init:
-mov r0r1,INTERUPT; setup interrupt jump vector
-mov [0x00],r0	; Zero page 0x00
-mov [0x01],r1	; Zero page 0x01
+	mov r0r1,INTERUPT; setup interrupt jump vector
+	mov [0x00],r0	; Zero page 0x00
+	mov [0x01],r1	; Zero page 0x01
 
-mov r0r1,ready	; Print a greeting message
-push_pc+1
-call print_str
+	mov r0r1,ready	; Print a greeting message
+	push_pc+1
+	call print_str
 
 ; New string:
-mov r2r3,input_str
-mov r4,0x00
-mov U,0x3E ; ">"
-mov A,U ; clear uart register
+	mov r2r3,input_str
+	mov r4,0x00
+	mov U,0x3E ; ">"
+	mov A,U ; clear uart register
 
 ; ################ main() ####################
 main_loop:
-push_pc+1
-call handle_input	; returns r5=0 if no string, else r5=1
-mov A,r5
-cmp A,0x01
-push_pc+1
-call_z execute_cmd
+	push_pc+1
+	call handle_input	; returns r5=0 if no string, else r5=1
+	mov A,r5
+	cmp A,0x01
+	jz main_loop.exe	; if an input is available, try and execute it
+	jmp main_loop
 
-jmp main_loop
-
+main_loop.exe:
+	push_pc+1
+	call execute_cmd
+	; check return code
+	mov A,r4
+	cmp A,0xff
+	jz main.exit
+	jmp main_loop
+	
 main.exit:
-mov r0r1,goodbye_str
-push_pc+1
-call print_str
-HALT
-jmp init ; If restart after HALT without reseting PC
+	mov r0r1,goodbye_str
+	push_pc+1
+	call print_str
+	HALT
+	jmp init ; If restart after HALT without reseting PC
 
-; ################  Execute commands if matched #########
-execute_cmd:
-mov r0r1,exit_str
-mov r2r3,input_str 
-push_pc+1
-call cmp_str
-mov A,r5
-cmp A,0x01
-jz main.exit	; exit main loop and HALT
+; ###########################  Execute commands if matched #########################################
+; ##############  r4 returns 0xff (non-zero) to exit main(), else r4 = 0 (doing nothing for now)  ##
+execute_cmd:	
+	mov r0r1,exit_str
+	mov r2r3,input_str 
+	push_pc+1
+	call cmp_str
+	mov A,r5
+	cmp A,0x00
+	jz execute_cmd.next0	; i.e. if r5 = 0 (no match)
+	; 'exit' found
+	mov r4,0xff		; r4!=0x00
+	pop T
+	ret
+	;jz main.exit	; exit main loop and HALT
+execute_cmd.next0:
+	mov r0r1,program_str
+	mov r2r3,input_str 
+	push_pc+1
+	call cmp_str
+	mov A,r5
+	cmp A,0x00
+	jz execute_cmd.next1	; if r5 = 0 (no match)
+	; 'prog' found
+	push_pc+1
+	call program_mode
+	; would return here from program_mode if called
+	mov r0r1,ready	; Print a greeting message
+	push_pc+1
+	call print_str
+	
+	jmp execute_cmd.exit
 
-mov r0r1,program_str
-mov r2r3,input_str 
-push_pc+1
-call cmp_str
-mov A,r5
-cmp A,0x01
-push_pc+1
-call_z program_mode
-jmp execute_cmd.exit
-
+execute_cmd.next1:
+; ... other programs here
+execute_cmd.error:
 ; Else, command not found
 ; Throw an error
-mov r0r1,error_str
-push_pc+1
-call print_str
+	mov r0r1,error_str
+	push_pc+1
+	call print_str
 
 execute_cmd.exit:
-mov r2r3,input_str ; setup new input string
-mov r4,0x00
-mov U,0x3E ; ">"
+	mov r2r3,input_str ; setup new input string
+	mov r4,0x00
+	mov U,0x3E ; ">"
 
-pop T
-RET
+	pop T
+	RET
 
 ; ########### Interupt vector ##################
 INTERUPT:
@@ -213,14 +236,18 @@ print_hex.exit:
 ;####  General helper function to compare two strings and save the special character # in the zero page
 ;####  r0r1 pointer to zero-terminated string1 (might contain wild-card character #, could pass on as r4?)
 ;####  r2r3 pointer to zero-terminated string2
-;####  r5 is 1 if a match else zero
+;####  r5 is non-zero if a match, else zero
 ;####  Usage:
 ;####  r0r1 = 'print(#)'
 ;####  r2r3 = 'print(A)'
-;####  zero page address (0x02) would contain 'A' and r5=1 would indicate a successful match
+;####  r5 = zero-page memory address to start putting bytes into. Can't be 0x00 (which is reserved anyway)
+;####  r4 is used but pushed/popped
+;####  zero page address (0x02) would contain 'A' and r5!=0x00 would indicate a successful match
 
 cmp_str_special:
 	mov r5,0x01	; True until found otherwise
+	push r4
+	mov r4,0x88		; ZEROPAGE (will be 0x80 on final hardware)
 cmp_str_special.start:
 	mov A,[r0r1]
 	cmp A,0x23 ; #
@@ -238,31 +265,71 @@ cmp_str_special.start:
 	
 cmp_str_special.wildcard:
 	mov A,[r2r3]	; get wildcard character from r2r3 string
-	mov [0x02],A	; put into zero-page address 0x02 (hard coded for now)
+	mov [r4r5],A;[0x02],A	; put into zero-page address 0x02 (hard coded for now)
 	inc r0r1
 	inc r2r3
+	inc r5			; no memory overflow checking...
 	jmp cmp_str_special.start
 	
 cmp_str_special.false:
 	mov r5,0x00
 cmp_str_special.exit:
+	pop r4	
 	pop T
 	ret
 	
+ascii_hex_to_byte:
+; ######## ascii_hex_to_byte: General library function ##########################################################
+; ######## Notes: No error checking for correct input. Bit crude but should work
+; ######## Inputs:
+; ######## r4 - address of ascii byte of high nibble, '0-9' char or 'A-F' char 
+; ######## r5 - address of ascii byte of low nibble, '0-9' char or 'A-F' char 
+; ######## Returns:
+; ######## r5 - assembled byte
+	mov A,r4
+	sub A,0x30 	; 0x30 = 48 = '0'
+	mov r4,A	; save result in r4
+	and A,0x10	; test 5th bit - overwrites A reg
+	mov A,r4	; restore A
+	jz ascii_hex_to_byte.r4digit
+	sub A,0x07	; 'A' = 65, 65-48-7 = 10 as required.
+	ascii_hex_to_byte.r4digit: ; 0-9
+	and A,0x0F	; this allows both upper and lower case A-F and a-f
+	shl A
+	shl A
+	shl A
+	shl A
+	mov r4,A	; high nibble back in r4
+
+	mov A,r5
+	sub A,0x30 	; 0x30 = 48 = '0'
+	mov r5,A	; save A
+	and A,0x10	; test 5th bit
+	mov A,r5	; restore A
+	jz ascii_hex_to_byte.r5digit
+	sub A,0x07	; 0x41 = 65
+	ascii_hex_to_byte.r5digit:
+	and A,0x0F
+	mov B,r4	; high nibble in B
+	or A,B		; combine high and low nibble
+	mov r5,A	; return byte in r5
+	pop T
+	ret 
+	
 ;### Programming mode
 program_mode:
-mov r2,0x01	; 0x0A = 10 lines
-mov r0r1, program_mode_str
+	mov r2,0x01	; 0x0E = 14 lines
+	mov r0r1, program_mode_str
 program_mode.display_text:
 	push_pc+1
-	call print_str	; Line 1-10
+	call print_str	; Line 1-14
 	inc r0r1
 	dec r2
 	jnz program_mode.display_text
 
-mov r2r3,input_str ; setup new input string
-mov r4,0x00
-mov U,0x3E ; ">"
+	mov r2r3,input_str ; setup new input string
+	mov r4,0x00
+	mov U,0x3E ; ">"
 
 ; ################ programming main() ####################
 program_mode.loop:
@@ -270,10 +337,19 @@ program_mode.loop:
 	call handle_input	; returns r5=0 if no string, else r5=1
 	mov A,r5
 	cmp A,0x01
-	push_pc+1
-	call_z program_mode.process_str ; process the commands in some way
+	jz program_mode.loop.process	; we got a match
 	jmp program_mode.loop
 
+program_mode.loop.process:
+	push_pc+1
+	call program_mode.process_str ; process the commands in some way
+	mov A,r4			; look at output, if r4!=0 then exit
+	cmp A,0x00
+	jz program_mode.loop
+	; else if we got here, exit program_mode back to main
+	pop T
+	ret
+	
 program_mode.process_str:
 ;	Get address of command string using r4 as an index
 	mov r4,0x00 ; command index = 0 initially
@@ -298,20 +374,18 @@ program_mode.process_loop:
 	; r0r1 now holds the actual address that was pointed to by r2r3
 	
 	mov r2r3,input_str	; reset input string pointer
+	mov r5,0x02			; set zeropage memory address for wildcard characters
 	push_pc+1			
 	call cmp_str_special	
 	mov A,r5
 	cmp A,0x00
-	jnz program_mode.success ; r5 = 1 means command recognised
+	jnz program_mode.success ; r5 !=0  means command recognised
 
 	mov A,r4	; loop counter
 	inc A
 	mov r4,A
-	;add A,0x61	; 0x61 = 'a'
-	;mov U,A
-	
-	mov A,r4
-	cmp A,0x09 ; 9 commands
+
+	cmp A,0x0D ; 13 commands
 	jnz program_mode.process_loop
 	; if we got here then went through all strings and didn't match
 	mov r0r1,error_str
@@ -320,8 +394,9 @@ program_mode.process_loop:
 	jmp program_mode.reset_prompt
 
 program_mode.jump_table:
-dw program_mode.set_high,program_mode.set_low,program_mode.addr,program_mode.readbyte
-dw program_mode.writebyte,program_mode.inc,program_mode.dec,program_mode.jump,program_mode.eoc ; for readability
+dw program_mode.set_high,program_mode.set_highHEX, program_mode.set_low,program_mode.set_lowHEX, program_mode.addr
+dw program_mode.readbyte,program_mode.writebyte,program_mode.writebyteHEX,program_mode.inc,program_mode.dec
+dw program_mode.jump,program_mode.eoc,program_mode.leave 
 
 program_mode.success:	; Use r4 as an index for a jump table
 	mov r0r1,program_mode.jump_table
@@ -339,29 +414,47 @@ program_mode.success:	; Use r4 as an index for a jump table
 	mov A,[r0r1]	; LOW byte of desired jump label
 	push A
 	pop PC ; jmp!
-
+	
 ; current address is at zero page, 0x03 (hi) and 0x04 (low)
 program_mode.set_high:
 	mov A,[0x02]
-	mov [0x03],A
+	mov [0x0A],A
 	jmp program_mode.reset_prompt
+	
+program_mode.set_highHEX:
+	mov r4,[0x02]	; high hex nibble in ascii, 0-9/a-f/A-F
+	mov r5,[0x03]	; low hex nibble in ascii
+	push_pc+1
+	call ascii_hex_to_byte
+	mov [0x0A],r5
+	jmp program_mode.reset_prompt
+
 program_mode.set_low:
 	mov A,[0x02]
-	mov [0x04],A
+	mov [0x0B],A
 	jmp program_mode.reset_prompt
+
+program_mode.set_lowHEX:
+	mov r4,[0x02]	; high hex nibble in ascii 0-9/a-f/A-F
+	mov r5,[0x03]	; low hex nibble in ascii
+	push_pc+1
+	call ascii_hex_to_byte
+	mov [0x0B],r5
+	jmp program_mode.reset_prompt
+	
 program_mode.addr:
 	mov r5,0x01	; print 0x in print_hex
-	mov r4,[0x03]	; Display interrupt vector address
+	mov r4,[0x0A]	; Display interrupt vector address
 	push_pc+1
 	call print_hex
 	mov r5,0x00	; don't print 0x in print_hex
-	mov r4,[0x04]	; Display interrupt vector address
+	mov r4,[0x0B]	; Display interrupt vector address
 	push_pc+1
 	call print_hex
 	jmp program_mode.reset_prompt
 program_mode.readbyte:
-	mov r0,[0x03]
-	mov r1,[0x04]
+	mov r0,[0x0A]
+	mov r1,[0x0B]
 	mov A,[r0r1]
 	mov r5,0x01
 	mov r4,A
@@ -369,31 +462,41 @@ program_mode.readbyte:
 	call print_hex
 	jmp program_mode.reset_prompt
 program_mode.writebyte:
-	mov r0,[0x03]
-	mov r1,[0x04]
+	mov r0,[0x0A]
+	mov r1,[0x0B]
 	mov A,[0x02]
 	mov [r0r1],A
 	jmp program_mode.reset_prompt
+program_mode.writebyteHEX:
+	mov r4,[0x02]	; high hex nibble in ascii, 0-9 and A-F (caps)
+	mov r5,[0x03]	; low hex nibble in ascii
+	push_pc+1
+	call ascii_hex_to_byte
+	mov A,r5	; assembled byte 
+	mov r0,[0x0A]
+	mov r1,[0x0B]
+	mov [r0r1],A	; write r5 into addressed specified in 0x0A-0x0B
+	jmp program_mode.reset_prompt
 program_mode.inc:
-	mov r0,[0x03]
-	mov r1,[0x04]
+	mov r0,[0x0A]
+	mov r1,[0x0B]
 	inc r0r1
-	mov [0x03],r0
-	mov [0x04],r1
+	mov [0x0A],r0
+	mov [0x0B],r1
 	jmp program_mode.reset_prompt
 program_mode.dec:
-	mov A,[0x04]
+	mov A,[0x0B]
 	dec A
-	mov [0x04],A
-	mov A,[0x03]
+	mov [0x0B],A
+	mov A,[0x0A]
 	subc A,0x00
-	mov [0x03],A
+	mov [0x0A],A
 	jmp program_mode.reset_prompt
 program_mode.jump:
-	mov A,[0x03]	; HIGH byte of desired jump label
+	mov A,[0x0A]	; HIGH byte of desired jump label
 	push A
 	inc r0r1
-	mov A,[0x04]	; LOW byte of desired jump label
+	mov A,[0x0B]	; LOW byte of desired jump label
 	push A
 	pop PC ; jmp!
 	jmp program_mode.reset_prompt
@@ -408,7 +511,11 @@ program_mode.eoc:
 	push_pc+1
 	call print_hex
 	jmp program_mode.reset_prompt
-
+program_mode.leave:
+	mov r4,0xff	; use r4 as a return register, signals to exit to main
+	pop T
+	ret
+	
 program_mode.reset_prompt:
 	mov r2r3,input_str ; setup new input string
 	mov r4,0x00
@@ -418,8 +525,8 @@ program_mode.reset_prompt:
 	
 ;Zero page structure:
 ; 0x00-0x01 RESERVED INT VECTOR
-; 0x02 byte for specal str cmp
-; 0x03-0x04 programming current address 
+; 0x02-0x09 8 bytes for special str cmp
+; 0x0A-0x0B programming current address (0x0A = High, 0x0B = Low byte)
 
 ; data labels don't have to be page-aligned
 welcome: dstr 'Welcome to Duncatron v1.0'
@@ -430,33 +537,37 @@ exit_str: dstr 'exit'
 goodbye_str: dstr 'Bye!'
 error_str: dstr 'ERROR'
 program_str: dstr 'prog'
-program_mode_str:
+program_mode_str: ; Humans can input bytes using hex 0x##, computers by sending byte directly ie: #
 dstr 'Entering PROGRAMMING mode. Commands:' ; this comment gets ignored
-dstr '			h#  ; set high address to # (#=byte)'
-dstr '			l#  ; set low address to #'
-dstr '			a	; display current address'
-dstr '			r   ; read the byte at current address'
-dstr '			w#  ; write the byte @ at current address'
-dstr '			+   ; increment address +1'
-dstr '			-   ; decrement address -1'
-dstr '			j   ; jump to current address'
-dstr '			eoc	; display end of code address'
+dstr '			h#  	; set high address to # (#=byte)'
+dstr '			h 0x##  ; set high address to 0x## (#=byte)'
+dstr '			l#  	; set low address to #'
+dstr '			l 0x##  ; set low address to 0x##'
+dstr '			a		; display current address'
+dstr '			r   	; read the byte at current address'
+dstr '			w#  	; write the byte # at current address'
+dstr '			w 0x##  ; write the byte 0x## at current address'
+dstr '			+   	; increment address +1'
+dstr '			-   	; decrement address -1'
+dstr '			j   	; jump to current address'
+dstr '			eoc		; display end of code address'
+dstr '			x		; leave programming mode'
 
-; For programmng mode have either a human mode (default) or uart mode (whch is iis current implementation)
-; Humans input bytes by 0x##, computers by sending byte directly ie: #
-; Add multiple byte input into cmp_str_special and a routine to check byte and convert to hex
-;program_commands:	
 program_cmd_table:
-dw cmd0,cmd1,cmd2,cmd3,cmd4,cmd5,cmd6,cmd7,cmd8
+dw cmd0,cmd1,cmd2,cmd3,cmd4,cmd5,cmd6,cmd7,cmd8,cmd9,cmdA,cmdB,cmdC
 cmd0: dstr 'h#'
-cmd1: dstr 'l#'
-cmd2: dstr 'a'
-cmd3: dstr 'r'
-cmd4: dstr 'w#'
-cmd5: dstr '+'
-cmd6: dstr '-'
-cmd7: dstr 'j'
-cmd8: dstr 'eoc'
+cmd1: dstr 'h 0x##'
+cmd2: dstr 'l#'
+cmd3: dstr 'l 0x##'
+cmd4: dstr 'a'
+cmd5: dstr 'r'
+cmd6: dstr 'w#'
+cmd7: dstr 'w 0x##'
+cmd8: dstr '+'
+cmd9: dstr '-'
+cmdA: dstr 'j'
+cmdB: dstr 'eoc'
+cmdC: dstr 'x'
 jumpstring:
 dstr 'Jumped!'
 ;dstr 'h#|l#|r|w#|i||d|j
