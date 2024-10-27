@@ -10,6 +10,12 @@ init:
 ; New string:
 	mov r2r3,input_str
 	mov r4,0x00
+init.txwait:
+	mov A,F ;128 64 32 16 8  4   2  1
+		    ;F7  F6 SD RDY OF N  C  Z
+	and A,0x20 ; TX SENDING
+	jnz init.txwait
+	
 	mov U,0x3E ; ">"
 	mov A,U ; clear uart register
 
@@ -83,6 +89,10 @@ execute_cmd.error:
 execute_cmd.exit:
 	mov r2r3,input_str ; setup new input string
 	mov r4,0x00
+	execute_cmd.exit.TXWAIT:
+		mov A,F
+		and A,0x20
+		jnz execute_cmd.exit.TXWAIT
 	mov U,0x3E ; ">"
 
 	pop T
@@ -111,6 +121,13 @@ cmp A,0x80 ; 128 character limit for now
 pop A
 jz handle_input.exit ; maximum number of characters
 ; Handle character, put in memory etc
+
+push A
+handle_input.TXWAIT:
+	mov A,F
+	and A,0x20
+	jnz handle_input.TXWAIT
+pop A
 mov U,A ; send character it back!
 mov [r2r3],A
 inc r2r3
@@ -121,6 +138,11 @@ handle_input.backchar:
 mov A,r4
 cmp A,0x00 ; compare r4 to 0, if jz don't delete char else delete char
 jz handle_input.exit
+
+handle_input.TXWAIT0:
+	mov A,F
+	and A,0x20
+	jnz handle_input.TXWAIT0
 mov U,0x7F ; Send backspace to console
 dec r4 
 dec r3 ; decrease r2r3  pointer
@@ -130,7 +152,15 @@ mov r2,A
 jmp handle_input.exit
 
 handle_input.endstr:
+	mov A,F
+	and A,0x20
+	jnz handle_input.endstr
 mov U,0x0A
+
+handle_input.endstr1:
+	mov A,F
+	and A,0x20
+	jnz handle_input.endstr1
 mov U,0x0D
 mov [r2r3],0x00 ; zero terminated string
 ;mov r0r1,input_str ; print string for now
@@ -146,6 +176,10 @@ RET
 handle_input.zerolen:
 mov r2r3,input_str ; setup new input string
 mov r4,0x00
+handle_input.zerolen.TXWAIT:
+	mov A,F
+	and A,0x20
+	jnz handle_input.zerolen.TXWAIT
 mov U,0x3E ; ">"
 
 handle_input.exit:
@@ -184,11 +218,24 @@ print_str:
 mov A,[r0r1]
 cmp A,0x00 ; test for null-terminated string
 jz print_str.end ; change to je for correctness when carry incorporated into logic
+push A
+print_str.TXWAIT0:
+	mov A,F
+	and A,0x20
+	jnz print_str.TXWAIT0
+pop A
 mov U,A ; print character
 inc r0r1; increment pointer
 jmp print_str
 print_str.end:
+	mov A,F
+	and A,0x20
+	jnz print_str.end
 mov U,0x0A	; newline
+print_str.TXWAIT1:
+	mov A,F
+	and A,0x20
+	jnz print_str.TXWAIT1
 mov U,0x0D
 POP T
 RET
@@ -205,7 +252,16 @@ mov A,r5
 cmp A,0x00
 jz print_hex.nolead
 
+print_hex.TXWAIT0:
+	mov A,F
+	and A,0x20
+	jnz print_hex.TXWAIT0
 mov U,0x30	; 48 = '0'
+
+print_hex.TXWAIT1:
+	mov A,F
+	and A,0x20
+	jnz print_hex.TXWAIT1
 mov U,0x78	; 120 = 'x'
 print_hex.nolead:
 mov r5,0x02	; change r5 and use as a loop counter (r5=2)
@@ -223,6 +279,12 @@ print_hex.process:	; takes 4 LSBs of A and displays hex character
 	add A,0x07			; map A onto range starting from 65=A otherwise
 
 	print_hex.digit:
+		push A
+		print_hex.digit.TXWAIT2:
+			mov A,F
+			and A,0x20
+			jnz print_hex.digit.TXWAIT2
+		pop A
 		mov U,A		; output digit
 		dec r5		; changes A
 		jz print_hex.exit
@@ -320,7 +382,7 @@ ascii_hex_to_byte:
 	
 ;### Programming mode
 program_mode:
-	mov r2,0x01	; 0x0E = 14 lines
+	mov r2,0x0E	; 0x0E = 14 lines
 	mov r0r1, program_mode_str
 program_mode.display_text:
 	push_pc+1
@@ -331,6 +393,11 @@ program_mode.display_text:
 
 	mov r2r3,input_str ; setup new input string
 	mov r4,0x00
+	
+	program_mode.display_text.TXWAIT:
+		mov A,F
+		and A,0x20
+		jnz program_mode.display_text.TXWAIT
 	mov U,0x3E ; ">"
 
 ; ################ programming main() ####################
@@ -521,6 +588,11 @@ program_mode.leave:
 program_mode.reset_prompt:
 	mov r2r3,input_str ; setup new input string
 	mov r4,0x00
+	
+	program_mode.reset_prompt.TXWAIT:
+		mov A,F
+		and A,0x20
+		jnz program_mode.reset_prompt.TXWAIT
 	mov U,0x3E ; ">"
 	pop T
 	ret
