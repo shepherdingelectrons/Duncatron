@@ -204,7 +204,7 @@ class ControlLogic():
 ##            print("Stack["+str(i)+"]="+str(Memory[i]))
 
     def set_controls(self, verbose=False):
-        # FLAGS: x x RX_READY TX_SENDING x N C Z
+        # FLAGS: x x TX_SENDING RX_READY x N C Z
         # Z C m m m I I I I I I I I
         FLAGS = F_reg.value
         Z = 1 if FLAGS&1 else 0
@@ -382,7 +382,7 @@ def setFlags():
     F_reg.value=(F_reg.value&0b11111000)|(Neg<<2)|(newcarry<<1)|Zero
 
     # X X RX_READY SENDING X N C Z
-    if T_IO.isactive(None):
+    if not T_IO.isactive(None): # The relationship between Fi direction and T_IO was inverted due to a PCB error... now NOT isactive
         highflags = F_reg.value & 0b11110000
         value=F_reg.databus.value # take Flag register directly from low databus rather than ALU
         F_reg.value=highflags | (value&0b1111)
@@ -401,7 +401,7 @@ def ALUcalc():
     alu_func = (a3<<3) | (alu_func&0b0111)
 
     # Use alu_func to set function
-    # FLAGS: x x RX_READY TX_SENDING x N C Z
+    # FLAGS: x x TX_SENDING RX_READY x N C Z
     carry=1 if F_reg.value&2 else 0
     
     Neg=0
@@ -419,7 +419,7 @@ def clear_int():
 
 def UART_out():
     U_reg.databus.set(U_reg.valueHI&0xFF)  # If we put values here, they will go onto databus
-    F_reg.value &= 0b11011111 # clear RX_READY flag
+    F_reg.value &= 0b11101111 # clear RX_READY flag
 
 def reset(clear_memory=True):    
     ALU_data = 0
@@ -486,7 +486,7 @@ HALT = signal("HALT")
 SPo = signal("SPo",activeLow=True)
 
 LOW_databus = databus("LOW8",floating=lambda : X.value)
-HI_databus = databus("HI8",floating=lambda : 0x88) # Zero page
+HI_databus = databus("HI8",floating=lambda : 0x80) # 0x88--> 0x80 Zero page
 
 CPU = ControlLogic()
 
@@ -506,7 +506,7 @@ r3 = register(name="r3",IN=(INen,5),OUT=(OUTen,5))
 r4 = register(name="r4",IN=(INen,6),OUT=(OUTen,6))
 r5 = register(name="r5",IN=(INen,7),OUT=(OUTen,7))
 
-U_reg = register(name="U",IN=(INen,0)) #,OUT=(INen,1)
+U_reg = register(name="U",IN=(INen,0))#,OUT=(INen,1))
 
 Memory = bytearray(2**16)
 
