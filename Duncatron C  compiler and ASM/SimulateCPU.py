@@ -34,7 +34,7 @@ if __name__=="__main__":
         CPU_UP=True
 
         while CPU_UP:
-            if myCPU.HALT.isactive(None) or myEmulator.pygame_handle(): CPU_UP = False
+            if myCPU.HALT.isactive(None) or myConsole.pygame_handle(): CPU_UP = False
             myCPU.CPU.compute(verbose=(( myCPU.CPU.microcode_counter==1) and debug))
 
         print("Final stack pointer=",myCPU.SP.value)
