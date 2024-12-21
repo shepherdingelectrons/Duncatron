@@ -11,7 +11,7 @@ class Assembler:
     DATASTRING = 260
     DATAWORDS = 261
     
-    def __init__(self,filename,memory,text):
+    def __init__(self,filename,memory,text=""):
         self.lines = []
         self.memory = memory
         self.maxPOS = 0
@@ -126,7 +126,7 @@ class Assembler:
                 return False
 
             asm = self.machinecode(cleaned_line)
-            print(line_number)
+            #print(line_number)
             if asm:
                 opcode = asm[0]
 
@@ -387,7 +387,7 @@ if __name__=="__main__":
     #from .define_instructions import define_instructions
     memory = bytearray(0x10000)
     #asm = Assembler("asm files\\boot.txt",memory,"")
-    filename="G:\\test.asm"
+    filename="test.asm"#"G:\\test.asm"
         
     asm = Assembler(filename,memory,"")
     success = asm.assemble()
