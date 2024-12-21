@@ -265,6 +265,7 @@ class ControlLogic():
             if self.Computer.U_reg.value!=-1: # Bit of a hack - means we just loaded a value into U reg for TX
                 if verbose: print(chr(self.Computer.U_reg.value), end='')
                 self.Computer.console.printToConsole(self.Computer.U_reg.value)
+                self.Computer.console.readQueue.append(self.Computer.U_reg.value)
                 self.Computer.U_reg.value=-1
 
             if verbose and self.CPU.microcode_counter==2:
