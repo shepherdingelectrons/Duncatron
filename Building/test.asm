@@ -10,12 +10,6 @@ init:
 ; New string:
 	mov r2r3,input_str
 	mov r4,0x00
-init.txwait:
-	mov A,F ;128 64 32 16 8  4   2  1
-		    ;F7  F6 SD RDY OF N  C  Z
-	and A,0x20 ; TX SENDING
-	jnz init.txwait
-	
 	mov U,0x3E ; ">"
 	mov A,U ; clear uart register
 
@@ -89,10 +83,6 @@ execute_cmd.error:
 execute_cmd.exit:
 	mov r2r3,input_str ; setup new input string
 	mov r4,0x00
-	execute_cmd.exit.TXWAIT:
-		mov A,F
-		and A,0x20
-		jnz execute_cmd.exit.TXWAIT
 	mov U,0x3E ; ">"
 
 	pop T
@@ -100,6 +90,9 @@ execute_cmd.exit:
 
 ; ########### Interupt vector ##################
 INTERUPT:
+mov r0r1,interupt_text
+push_pc+1
+call print_str
 RETI
 
 ;###### handle_input ###########################
@@ -121,13 +114,6 @@ cmp A,0x80 ; 128 character limit for now
 pop A
 jz handle_input.exit ; maximum number of characters
 ; Handle character, put in memory etc
-
-push A
-handle_input.TXWAIT:
-	mov A,F
-	and A,0x20
-	jnz handle_input.TXWAIT
-pop A
 mov U,A ; send character it back!
 mov [r2r3],A
 inc r2r3
@@ -138,11 +124,6 @@ handle_input.backchar:
 mov A,r4
 cmp A,0x00 ; compare r4 to 0, if jz don't delete char else delete char
 jz handle_input.exit
-
-handle_input.TXWAIT0:
-	mov A,F
-	and A,0x20
-	jnz handle_input.TXWAIT0
 mov U,0x7F ; Send backspace to console
 dec r4 
 dec r3 ; decrease r2r3  pointer
@@ -152,15 +133,7 @@ mov r2,A
 jmp handle_input.exit
 
 handle_input.endstr:
-	mov A,F
-	and A,0x20
-	jnz handle_input.endstr
 mov U,0x0A
-
-handle_input.endstr1:
-	mov A,F
-	and A,0x20
-	jnz handle_input.endstr1
 mov U,0x0D
 mov [r2r3],0x00 ; zero terminated string
 ;mov r0r1,input_str ; print string for now
@@ -176,10 +149,6 @@ RET
 handle_input.zerolen:
 mov r2r3,input_str ; setup new input string
 mov r4,0x00
-handle_input.zerolen.TXWAIT:
-	mov A,F
-	and A,0x20
-	jnz handle_input.zerolen.TXWAIT
 mov U,0x3E ; ">"
 
 handle_input.exit:
@@ -218,24 +187,11 @@ print_str:
 mov A,[r0r1]
 cmp A,0x00 ; test for null-terminated string
 jz print_str.end ; change to je for correctness when carry incorporated into logic
-push A
-print_str.TXWAIT0:
-	mov A,F
-	and A,0x20
-	jnz print_str.TXWAIT0
-pop A
 mov U,A ; print character
 inc r0r1; increment pointer
 jmp print_str
 print_str.end:
-	mov A,F
-	and A,0x20
-	jnz print_str.end
 mov U,0x0A	; newline
-print_str.TXWAIT1:
-	mov A,F
-	and A,0x20
-	jnz print_str.TXWAIT1
 mov U,0x0D
 POP T
 RET
@@ -252,16 +208,7 @@ mov A,r5
 cmp A,0x00
 jz print_hex.nolead
 
-print_hex.TXWAIT0:
-	mov A,F
-	and A,0x20
-	jnz print_hex.TXWAIT0
 mov U,0x30	; 48 = '0'
-
-print_hex.TXWAIT1:
-	mov A,F
-	and A,0x20
-	jnz print_hex.TXWAIT1
 mov U,0x78	; 120 = 'x'
 print_hex.nolead:
 mov r5,0x02	; change r5 and use as a loop counter (r5=2)
@@ -279,12 +226,6 @@ print_hex.process:	; takes 4 LSBs of A and displays hex character
 	add A,0x07			; map A onto range starting from 65=A otherwise
 
 	print_hex.digit:
-		push A
-		print_hex.digit.TXWAIT2:
-			mov A,F
-			and A,0x20
-			jnz print_hex.digit.TXWAIT2
-		pop A
 		mov U,A		; output digit
 		dec r5		; changes A
 		jz print_hex.exit
@@ -311,7 +252,7 @@ print_hex.exit:
 cmp_str_special:
 	;mov r5,0x01	; True until found otherwise
 	push r4
-	mov r4,0x88		; ZEROPAGE (will be 0x80 on final hardware)
+	mov r4,0x80		; ZEROPAGE (will be 0x80 on final hardware)
 cmp_str_special.start:
 	mov A,[r0r1]
 	cmp A,0x23 ; #
@@ -393,12 +334,7 @@ program_mode.display_text:
 
 	mov r2r3,input_str ; setup new input string
 	mov r4,0x00
-	
-	program_mode.display_text.TXWAIT:
-		mov A,F
-		and A,0x20
-		jnz program_mode.display_text.TXWAIT
-	mov U,0x3E ; ">"
+	mov U,0x3F; ":" ;0x3E ; ">"
 
 ; ################ programming main() ####################
 program_mode.loop:
@@ -462,11 +398,6 @@ program_mode.process_loop:
 	call print_str
 	jmp program_mode.reset_prompt
 
-program_mode.jump_table:
-dw program_mode.set_high,program_mode.set_highHEX, program_mode.set_low,program_mode.set_lowHEX, program_mode.addr
-dw program_mode.readbyte,program_mode.writebyte,program_mode.writebyteHEX,program_mode.inc,program_mode.dec
-dw program_mode.jump,program_mode.eoc,program_mode.leave 
-
 program_mode.success:	; Use r4 as an index for a jump table
 	mov r0r1,program_mode.jump_table
 	mov A,r4 ; index into jump table
@@ -484,23 +415,92 @@ program_mode.success:	; Use r4 as an index for a jump table
 	push A
 	pop PC ; jmp!
 	
-; current address is at zero page, 0x03 (hi) and 0x04 (low)
+; old code below, set_high, writebyte, set_low
+
 program_mode.set_high:
 	mov A,[0x02]
 	mov [0x0A],A
 	jmp program_mode.reset_prompt
 	
+program_mode.set_low:
+	mov A,[0x02]
+	mov [0x0B],A
+	jmp program_mode.reset_prompt
+	
+program_mode.writebyte:
+	mov r0,[0x0A]
+	mov r1,[0x0B]
+	mov A,[0x02]
+	mov [r0r1],A
+	jmp program_mode.reset_prompt
+
+; current address is at zero page 0x03 (hi) and 0x04 (low)
+program_mode.set_n:	;sets number of bytes for serial read and write operations
+	mov r4,[0x02]	; high hex nibble in ascii, 0-9/a-f/A-F
+	mov r5,[0x03]	; low hex nibble in ascii
+	push_pc+1
+	call ascii_hex_to_byte
+	mov [0x0C],r5	; store number of bytes in 0x0C on zeropage
+	jmp program_mode.reset_prompt
+	
+program_mode.writestream:
+	; we now setup a loop which waits for n+1 characters on the UART RX stream
+	; we echo each one back so that the sending knows we have received and okay to send another
+	mov r5,[0x0C]	; number pf bytes (0-255)--> 1-256 bytes
+	mov r0,[0x0A]	; high byte of address
+	mov r1,[0x0B]	; low byte of address
+
+; Consider adding, auto address incrementing and read command as: r 0x##
+program_mode.writestream.loop:
+		mov A,F	;128 64 32 16 8  4   2  1
+				;F7  F6 SD RDY OF N  C  Z
+		and A,0x10 ; RX character is waiting
+		jz program_mode.writestream.loop
+		
+		mov A,U		; get RX character from UART
+		mov U,A		; send back (assume not sending, don't check for now...)
+		
+		; Do something with the character, write it somewhere I guess
+		mov [r0r1],A
+		
+		mov A,r5	; check loop counter
+		cmp A,0x00
+		jz program_mode.reset_promptNL ; if zero, A-0 = 0, then bail out
+		
+		dec r5	; by doing decrement after compare, 0 is mapped to 1 byte and 255 is mapped to 256 bytes
+		inc r0r1
+		
+		jmp program_mode.writestream.loop
+
+program_mode.readstream:
+	mov r5,[0x0C]	; number pf bytes (0-255)--> 1-256 bytes
+	mov r0,[0x0A]	; high byte of address
+	mov r1,[0x0B]	; low byte of address
+		
+program_mode.readstream.loop:
+	mov A,F	;128 64 32 16 8  4   2  1
+				;F7  F6 SD RDY OF N  C  Z
+	and A,0x20 ; TX character is still sending, wait...
+	jnz program_mode.readstream.loop
+	
+	mov A,[r0r1]
+	mov U,A		; send char at memory address
+	
+	mov A,r5	; check loop counter
+	cmp A,0x00
+	jz program_mode.reset_promptNL ; if zero, A-0 = 0, then bail out
+		
+	dec r5	; by doing decrement after compare, 0 is mapped to 1 byte and 255 is mapped to 256 bytes
+	inc r0r1
+	
+	jmp program_mode.readstream.loop
+
 program_mode.set_highHEX:
 	mov r4,[0x02]	; high hex nibble in ascii, 0-9/a-f/A-F
 	mov r5,[0x03]	; low hex nibble in ascii
 	push_pc+1
 	call ascii_hex_to_byte
 	mov [0x0A],r5
-	jmp program_mode.reset_prompt
-
-program_mode.set_low:
-	mov A,[0x02]
-	mov [0x0B],A
 	jmp program_mode.reset_prompt
 
 program_mode.set_lowHEX:
@@ -520,7 +520,8 @@ program_mode.addr:
 	mov r4,[0x0B]	; Display interrupt vector address
 	push_pc+1
 	call print_hex
-	jmp program_mode.reset_prompt
+	jmp program_mode.reset_promptNL
+
 program_mode.readbyte:
 	mov r0,[0x0A]
 	mov r1,[0x0B]
@@ -529,13 +530,8 @@ program_mode.readbyte:
 	mov r4,A
 	push_pc+1
 	call print_hex
-	jmp program_mode.reset_prompt
-program_mode.writebyte:
-	mov r0,[0x0A]
-	mov r1,[0x0B]
-	mov A,[0x02]
-	mov [r0r1],A
-	jmp program_mode.reset_prompt
+	jmp program_mode.reset_promptNL
+
 program_mode.writebyteHEX:
 	mov r4,[0x02]	; high hex nibble in ascii, 0-9 and A-F (caps)
 	mov r5,[0x03]	; low hex nibble in ascii
@@ -579,28 +575,36 @@ program_mode.eoc:
 	mov r4,r1	; Display interrupt vector address
 	push_pc+1
 	call print_hex
-	jmp program_mode.reset_prompt
+	jmp program_mode.reset_promptNL
+
 program_mode.leave:
 	mov r4,0xff	; use r4 as a return register, signals to exit to main
 	pop T
 	ret
-	
+
+program_mode.reset_promptNL:
+	mov U,0x0A	; newline
+	mov U,0x0D	; carriage-return
+
 program_mode.reset_prompt:
 	mov r2r3,input_str ; setup new input string
-	mov r4,0x00
-	
-	program_mode.reset_prompt.TXWAIT:
-		mov A,F
-		and A,0x20
-		jnz program_mode.reset_prompt.TXWAIT
-	mov U,0x3E ; ">"
+
+	mov r4,0x00	
+	mov U,0x3F; ":" ;0x3E ; ">"
 	pop T
 	ret
-	
+
+program_mode.jump_table:
+dw program_mode.set_highHEX, program_mode.set_lowHEX, program_mode.addr
+dw program_mode.readbyte,program_mode.writebyteHEX,program_mode.inc,program_mode.dec
+dw program_mode.jump,program_mode.set_n,program_mode.writestream,program_mode.readstream
+dw program_mode.eoc,program_mode.leave 
+
 ;Zero page structure:
 ; 0x00-0x01 RESERVED INT VECTOR
 ; 0x02-0x09 8 bytes for special str cmp
 ; 0x0A-0x0B programming current address (0x0A = High, 0x0B = Low byte)
+; 0x0C		number of bytes for serial writing and reading
 
 ; data labels don't have to be page-aligned
 welcome: dstr 'Welcome to Duncatron v1.0'
@@ -613,33 +617,43 @@ error_str: dstr 'ERROR'
 program_str: dstr 'prog'
 program_mode_str: ; Humans can input bytes using hex 0x##, computers by sending byte directly ie: #
 dstr 'Entering PROGRAMMING mode. Commands:' ; this comment gets ignored
-dstr '			h#  	; set high address to # (#=byte)'
-dstr '			h 0x##  ; set high address to 0x## (#=byte)'
-dstr '			l#  	; set low address to #'
-dstr '			l 0x##  ; set low address to 0x##'
+dstr '			h 0x##	; set high address to 0x## (#=byte)'
+dstr '			l 0x##	; set low address to 0x##'
 dstr '			a		; display current address'
-dstr '			r   	; read the byte at current address'
-dstr '			w#  	; write the byte # at current address'
-dstr '			w 0x##  ; write the byte 0x## at current address'
-dstr '			+   	; increment address +1'
-dstr '			-   	; decrement address -1'
-dstr '			j   	; jump to current address'
+dstr '			r		; read the byte at current address'
+dstr '			w 0x##	; write the byte 0x## at current address'
+dstr '			+		; increment address +1'
+dstr '			-		; decrement address -1'
+dstr '			j		; jump to current address'
+dstr '			n 0x##	; set num bytes (0-255) for serial w/r'
+dstr '			ws		; write serial stream (writes n+1) bytes'
+dstr '			rs		; read serial stream (reads n+1) bytes'
 dstr '			eoc		; display end of code address'
 dstr '			x		; leave programming mode'
 
+; old strings:
+dstr '			h#  	; set high address to # (#=byte)'
+dstr '			l#		; set low address to # (#=byte)'
+dstr '			w#  	; write the byte # at current address'
+
+; Tidy up commands, remove h# and l#
+; Tidy up EOL (13,10 = 0x0D,0x0A) behaviour to make automated access easier
+; add 'ws 0x##' and 'rs 0x##' = write serial and read serial, 
+; where '0x##' is the number of characters to write/read in a following serial stream
+
 program_cmd_table:
 dw cmd0,cmd1,cmd2,cmd3,cmd4,cmd5,cmd6,cmd7,cmd8,cmd9,cmdA,cmdB,cmdC
-cmd0: dstr 'h#'
-cmd1: dstr 'h 0x##'
-cmd2: dstr 'l#'
-cmd3: dstr 'l 0x##'
-cmd4: dstr 'a'
-cmd5: dstr 'r'
-cmd6: dstr 'w#'
-cmd7: dstr 'w 0x##'
-cmd8: dstr '+'
-cmd9: dstr '-'
-cmdA: dstr 'j'
+cmd0: dstr 'h 0x##'
+cmd1: dstr 'l 0x##'
+cmd2: dstr 'a'
+cmd3: dstr 'r'
+cmd4: dstr 'w 0x##'
+cmd5: dstr '+'
+cmd6: dstr '-'
+cmd7: dstr 'j'
+cmd8: dstr 'n 0x##'
+cmd9: dstr 'ws'
+cmdA: dstr 'rs'
 cmdB: dstr 'eoc'
 cmdC: dstr 'x'
 jumpstring:
@@ -647,7 +661,10 @@ dstr 'Jumped!'
 ;dstr 'h#|l#|r|w#|i||d|j
 input_str: db [129]; Need to have some kind of array notation for making fixed sizes, i.e. db [129]
 END_OF_CODE: ; Label useful so we know where we can safely start programming
-
+push_pc+1
+int
+mov U,0x40 ; '@'
+halt
 ;0x4161: ;0x41 =A, 0x61 =a
 ;	mov r0r1,jumpstring
 ;	push_pc+1
