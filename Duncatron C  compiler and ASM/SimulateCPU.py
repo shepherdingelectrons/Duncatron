@@ -2,23 +2,13 @@ import CPUSimulator.CPU as CPU
 import simple_assembler
 import CPUSimulator.Console as Console
 
-def programComputer(Computer,asm_file,show_labels=False):
-    print("Assembling code:")
-    asm = simple_assembler.Assembler(asm_file,Computer.Memory)
-    success = asm.assemble()
-
-    if success and show_labels:
-        for lab in asm.labels:
-            print(lab,":",hex(asm.labels[lab]),asm.labels[lab])
-
-    return success
-    
 if __name__=="__main__":
     myCPU = CPU.Computer() # Multiple CPUs are possible, I think pygame only easily supports a single console window however
 
-        
     # *********************** ASSEMBLE CODE *******************************
-    success = programComputer(myCPU,"test.asm",True)
+    print("Assembling code:")
+    asm = simple_assembler.Assembler("test.asm",myCPU.Memory)
+    success = asm.assemble(show_labels = False)
     # *********************** EMULATE CPU *******************************
 
     if success:
