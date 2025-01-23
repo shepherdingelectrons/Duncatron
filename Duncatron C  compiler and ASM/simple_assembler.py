@@ -108,7 +108,7 @@ class Assembler:
                 self.write_memory(address+1,label_address&0xFF)#self.memory[address+1] = label_address & 0xFF
         return True
     
-    def assemble(self):
+    def assemble(self, show_labels=False):
         print("Making regex...")
         if not self.make_regex(): return False
         print("Regex complete")
@@ -198,7 +198,14 @@ class Assembler:
             elif asm==False:
                 print("Failed to generate machine code on line:",line_number,":",line)
                 return False
-        return self.backfill_references()
+
+        success = self.backfill_references()
+        
+        if success and show_labels:
+            for lab in self.labels:
+                print(lab,":",hex(self.labels[lab]),self.labels[lab])
+
+        return success
 
     def write_memory(self,position,byte):
         self.memory[position]=byte
