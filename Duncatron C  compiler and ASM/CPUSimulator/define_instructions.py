@@ -99,7 +99,10 @@ def get_instruction_properties(tilde,op):
     jmp = False
     
     for m in microcode[op]:
-        if m!="" and "MC_reset" not in m:
+        # Either old MC_RESET behaviour, so don't include clock cycle if MC_reset signal is present else if
+        # we want new MC_RESET_terminate behaviour, then always count the cycle
+        MC_RESET_condition = (MC_RESET_terminate==False and "MC_reset" not in m) or (MC_RESET_terminate==True)
+        if m!="" and MC_RESET_condition:
             cycles+=1
         if "Fi" in m:
             if "T_EN" in m:
@@ -259,6 +262,10 @@ def define_microcode(opcode,lines,ZC=None):
     # ZC = 0b00, 0b01, 0b10, 0b11
     if ZC!=None:
         ZC = ZC<<8 # 0,256,512,768
+
+    i_offset = 1
+    if MC_RESET_terminate:
+        i_offset=0
         
     if type(opcode)==type(""):
         opcode = asm(opcode)[0] # get opcode straight from assembler, helps if instructions are reordered
@@ -275,19 +282,27 @@ def define_microcode(opcode,lines,ZC=None):
             microcode[opcode+768][i]=l
         else:
             microcode[opcode+ZC][i]=l # This lets us do conditional JMPing later           
-            
-    if i<7:        
-        if ZC==None:
-            if not "MC_reset" in microcode[opcode][i]:
-                microcode[opcode][i+1] = ["MC_reset"] # microcounter reset, add here automatically if not added manually
-                microcode[opcode+256][i+1] = ["MC_reset"]
-                microcode[opcode+512][i+1] = ["MC_reset"]
-                microcode[opcode+768][i+1] = ["MC_reset"]
-        else:
-            if not "MC_reset" in microcode[opcode+ZC][i]:
-                microcode[opcode+ZC][i+1] = ["MC_reset"]
-            
 
+    if i+i_offset>=2 and i+i_offset<=7: # Either add MC_reset to the empty next instruction or the active current instruction depending on MC_RESET_terminate value
+    # There is an insiduous condition where if an instruction is only FETCH0,FETCH1 (i.e. NOP) then FETCH1 gets MC_reset added to it and as it is handled as a
+    # reference by Python, ALL subsequent instructions have MC_reset added to FETCH1... leading to bad times - bug catch and squashed :)
+        if ZC==None:
+            if "MC_reset" not in microcode[opcode][i+i_offset]:
+                if len(microcode[opcode][i+i_offset])==0:
+                    microcode[opcode][i+i_offset] = ["MC_reset"]
+                    microcode[opcode+256][i+i_offset] = ["MC_reset"]
+                    microcode[opcode+512][i+i_offset] = ["MC_reset"]
+                    microcode[opcode+768][i+i_offset] = ["MC_reset"]
+                else:
+                    microcode[opcode][i+i_offset].append("MC_reset") # microcounter reset, add here automatically if not added manually
+                    # This also affects +256, +512 and +768. I think I'm running afoul of Python's list referencing
+        else:
+            if "MC_reset" not in microcode[opcode+ZC][i+i_offset]:
+                if len(microcode[opcode+ZC][i+i_offset])==0:
+                    microcode[opcode+ZC][i+i_offset] = ["MC_reset"]
+                else:
+                    microcode[opcode+ZC][i+i_offset].append("MC_reset")
+            
 def get_microcode_int(controls):
     total = 0
     for signal_name in signals:
@@ -926,7 +941,7 @@ def add_UART():
     
 
 def add_misc():
-    add_instruction("NOP",pos=255,microcode_lines=[FETCH0,FETCH1])
+    add_instruction("NOP",pos=255,microcode_lines=[FETCH0,FETCH1,["MC_reset"]])
     add_instruction("HALT",pos=None,addresses=[x for x in range(0,256)],microcode_lines=[FETCH0,FETCH1,["HALT"]])
     ##add_instruction("PUSH PC",252)#pos=None,addresses=range(0,256))
     ##add_instruction("POP PC",253)#pos=None,addresses=range(0,256))
@@ -938,6 +953,20 @@ def find_instruction(ins_str):
         if ins_str==ins:
             return "0x{:02x}".format(op)
     return None
+
+def not_8bit(a):
+    result = 0
+    for i in range(0,8):
+        bit = 0 if (1<<i)&a else (1<<i)
+        result |= bit
+    return result
+
+def xor_8bit(a,b):
+    result = 0
+    for i in range(0,8):
+        result |= ((1<<i)&a) ^ ((1<<i)&b)
+    #print(a,b,result)
+    return result
 
 MAX_MICRO_LINE_BITS = 3 # 3 = 2**3, 3-bit microcode lines
 MAX_MICRO_LINES = 2**MAX_MICRO_LINE_BITS
@@ -1007,6 +1036,31 @@ instruction_set = [""]*256 # 256 instructions to be defined
 # o0 = XOR(X-sig,x1) = a3
 # i0 = XOR(X-sig,a2)
 
+# *********************************************#
+# Define what we want this module to output
+if __name__== "__main__":
+    write_EEPROM = True # Write EEPROM bytearray to file
+    build_HTML = True
+else:
+    write_EEPROM = False
+    build_HTML = False
+
+output_type = 2
+# 0 = No output
+# 1 = customasm CPU definition
+# 2 = instruction property table
+# 3 = instruction_str for ASM interpreter
+
+MC_RESET_terminate = True
+# False = Old behaviour, MC_RESET is the only microcode run and
+# True = New behaviour, MC_RESET is ALWAYS asserted on the last instruction
+#       microcode and therefore clocks the INT logic it is de-asserted
+#       Details: Inverse of MC_RESET (active high) is used to clock the D-type
+#       flip-flop that the interupt logic uses to detect the interupt status at
+#       the start of instructions.
+# *********************************************#
+
+
 reg_names_IN = ["U","_Uout","r0","r1","r2","r3","r4","r5"]
 reg_names=["A","B","r0","r1","r2","r3","r4","r5"]
 
@@ -1042,16 +1096,7 @@ add_JMPs()
 
 add_misc()
 
-if __name__=="__main__":
-    write_EEPROM = True # Write EEPROM bytearray to file
-    build_HTML = True
-else:
-    write_EEPROM = False
-    build_HTML = False
-
 instruction_str = ""
-
-output_type = 2# 0 = No output, 1 = customasm CPU definition, 2 = instruction property table, 3 = instruction_str for ASM interpreter
 headers=["Instruction","Opcode","PC change","Register change"]
 instruction_table = []
 
@@ -1083,20 +1128,6 @@ for op,ins in enumerate(instruction_set):
         zc_3 = microcode[op+768][0]
         if zc_0 == "" or zc_1 == "" or zc_2 == "" or zc_3 == "":
             print("ERROR: Microcode not fully defined for opcode:",op,", instruction:",ins)
-
-def not_8bit(a):
-    result = 0
-    for i in range(0,8):
-        bit = 0 if (1<<i)&a else (1<<i)
-        result |= bit
-    return result
-
-def xor_8bit(a,b):
-    result = 0
-    for i in range(0,8):
-        result |= ((1<<i)&a) ^ ((1<<i)&b)
-    #print(a,b,result)
-    return result
 
 if output_type==1:# append other instructions for customasm
     find_subc = find_instruction("CMP A,0x@@")
@@ -1174,7 +1205,7 @@ if output_type==3: print(instruction_str, len(instruction_str))
 # Put "NOP" into unfilled instructions:
 for i in range(0,256*4):
     if microcode[i][0]=="":
-        define_microcode(i,[FETCH0,FETCH1,["MC_reset"]]) # NOP
+        define_microcode(i,[FETCH0,FETCH1,["MC_reset"]]) # NOP            
 
 # ADDRESS_SPACE = 2**(8+2+3) #256 instructions, Z, C and 3-bit microcode counter
 # Z C m m m I I I I I I I I
@@ -1213,6 +1244,30 @@ def write_EEPROM_block(EEPROM_BYTE,textmode=False):
         print("Wrote...'control_EEPROM"+str(EEPROM_BYTE)+".py'")     
     f.close()
 
+def write_C_header(EEPROM_BYTE):
+    # #include <avr/pgmspace.h>
+    # https://www.arduino.cc/reference/tr/language/variables/utilities/progmem/
+    f = open("control_EEPROM"+str(EEPROM_BYTE)+".h","w")
+    f.write("const PROGMEM uint_8 control"+str(EEPROM_BYTE)+"[] = {")
+    batches = 16
+    for addr in range(0,2**(8+2+3),batches):
+        f.write("\n")
+        for i in range(0,batches):
+            address = addr+i
+
+            ins = address & 0xFF
+            mmm = (address >> 8) & 0x07
+            ZC = (address>>11) & 0x03
+            
+            control_word = get_microcode_int(microcode[ins+(ZC<<8)][mmm])
+            control_byte = (control_word>>(8*EEPROM_BYTE)) & 0xFF
+
+            f.write(hex(control_byte))
+            if address<2**(8+2+3)-1:
+                f.write(",")
+    f.write("};")
+
+    print("Wrote...'control_EEPROM"+str(EEPROM_BYTE)+".h'")    
 print("Free instruction slots at:")
 for i in free_ins:
     # 0b 7  6  5  4  3  2  1  0
@@ -1240,4 +1295,10 @@ if write_EEPROM:
     write_EEPROM_block(0,textmode=True)
     write_EEPROM_block(1,textmode=True)
     write_EEPROM_block(2,textmode=True)
+
+    write_C_header(0)
+    write_C_header(1)
+    write_C_header(2)
+    
 print("Instructon set completed")
+

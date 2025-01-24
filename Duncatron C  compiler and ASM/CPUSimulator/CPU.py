@@ -246,16 +246,21 @@ class ControlLogic():
         # Check if new set of controls has MC_reset set, if so instantly reset
         # microcode counter and get and set next control set (simulates what
         # would happen in the hardware)
+
         if self.Computer.MC_reset.isactive(None):
             if verbose: print("MC_reset active")
-            self.microcode_counter = 0
-            self.set_controls(verbose) # get next signal set
-
+            
+            if self.Computer.MC_RESET_terminate==False:
+                self.microcode_counter = 0
+                self.set_controls(verbose) # get next signal set
+            else:
+                self.microcode_counter = -1 # ensure next counter value will be 0
+    
         if not self.Computer.HALT.isactive(None):
             self.clockpulse() # Do the thing
         else:
             return
-        
+
         # Increment microcode clock and wrap around at 0-7
         self.microcode_counter =(self.microcode_counter+1)&7
         
@@ -268,10 +273,36 @@ class ControlLogic():
                 self.Computer.console.readQueue.append(self.Computer.U_reg.value)
                 self.Computer.U_reg.value=-1
 
-            if verbose and self.CPU.microcode_counter==2:
-                print("Loaded instruction:",asm.lookupASM[self.I_reg.value])
-                input(">") # Wait for keypress between clock cycles
+        if verbose:# and self.microcode_counter==2:
+            print("Loaded instruction:",hex(self.Computer.I_reg.value))#asm.lookupASM[self.I_reg.value])
+            self.analyse_microcode(0,1,self.Computer.I_reg.value)
+            input(">") # Wait for keypress between clock cycles
 
+    def analyse_microcode(self,Z,C,instruction):
+        #address = (Z<<12)|(C<<11)|(self.microcode_counter<<8)|self.Computer.I_reg.value
+        for i in range(0,8):
+            address = Z<<12|C<<11|i<<8|(instruction&0xFF)
+            control_byte0 = control0[address]
+            control_byte1 = control1[address]
+            control_byte2 = control2[address]
+
+            signals_active = []
+            for s in range(0,len(self.Computer.signal_group)):
+                s_mask = s&7
+                # 0 1 2 3 4 5 6 7
+                # 8 9 A B C D E F
+                
+                if s<8:                
+                    bit = 1 if control_byte0&(1<<s_mask) else 0
+                elif s<16:
+                    bit = 1 if control_byte1&(1<<s_mask) else 0
+                else:
+                    bit = 1 if control_byte2&(1<<s_mask) else 0
+                    
+                self.Computer.signal_group[s].value = bit
+                if bit==self.Computer.signal_group[s].on():
+                    signals_active.append(self.Computer.signal_group[s].name)
+            print(hex(instruction),":",i,":",signals_active)
 class ArithmeticLogicUnit():
     def __init__(self,Computer):
         self.ALU_data = 0
@@ -502,6 +533,10 @@ class Computer():
 
         self.CPU.connect(self.U_reg,self.INen,1,self.UART_out) # Get UART received byte
 
+        self.MC_RESET_terminate = True #
+        # False = Old behaviour, MC_RESET is the only microcode run and
+        # True = New behaviour, MC_RESET is ALWAYS asserted on the last instruction
+        #       microcode and therefore clocks the INT logic it is de-asserted
         self.reset() # Starting positions
         
     def connectConsole(self,console):
@@ -571,6 +606,7 @@ else:
     control0 = OpenControlFile(".\CPUSimulator\control_EEPROM0.txt")
     control1 = OpenControlFile(".\CPUSimulator\control_EEPROM1.txt")
     control2 = OpenControlFile(".\CPUSimulator\control_EEPROM2.txt")
+        
     #from .control_EEPROM0 import control0
     #from .control_EEPROM1 import control1
     #from .control_EEPROM2 import control2
