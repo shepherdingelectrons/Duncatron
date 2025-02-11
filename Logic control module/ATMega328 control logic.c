@@ -12,14 +12,15 @@
 #define set_bit(reg,bit) reg|=(1<<bit)
 #define clr_bit(reg,bit) reg&=!(1<<bit)
 #define tog_bit(reg,bit) reg^=(1<<bit)
+#define set_bit_to_value(reg,bit) reg^=((1<<bit))
 
 // ADC useful definitions
 
-#define SHIFT_DATA_PIN 0	; PB0
-#define SHIFT_CLK_PIN 1 	; PB1
-#define SHIFT_LATCH_PIN 2	; PB2
+#define SHIFT_DATA_PIN 0	// PB0
+#define SHIFT_CLK_PIN 1 	// PB1
+#define SHIFT_LATCH_PIN 2	// PB2
 
-#define ADC_PIN 3 // Change to 7 on actual board else use PC3 (databus_QH to test)
+#define ADC_PIN 7// Change to 7 on actual board else use PC3 (databus_QH to test)
 
 // https://avr-guide.github.io/timers-on-the-atmega328/
 //#define WGM00 0
@@ -102,6 +103,27 @@ void adc_setup()
 		ADCSRA |= (1<<ADSC) ; //Start the conversion
 }
 
+
+void shift_out_byte_595(uint8_t shift_byte)
+{
+	// Shift register 74HC595 clocks into Qa first then Qb, Qc, etc
+	// We need to reverse the bit order in define_instructions.py so that Qa is MSB (i.e. #Ai)
+	// rather than LSB
+	uint8_t i;
+	
+	for (i=0;i<8;i++)
+	{	
+		clr_bit(PORTB,0);	//PB0 = Shift data bit pin
+		PORTB |= (shift_byte&1);
+		
+		//USART_send('1');
+		set_bit(PORTB,SHIFT_CLK_PIN);
+		shift_byte>>=1;
+		//USART_send('2');
+		clr_bit(PORTB,SHIFT_CLK_PIN); // Clock in serial
+	}	
+}
+
 int main(void)
 {
 	uint16_t clock_ADC; // raw 10-bit ADC value
@@ -113,32 +135,25 @@ int main(void)
 	clr_bit(PORTB,0);
 	
     /* Replace with your application code */
+	shift_out_byte_595(0x55);
     while (1) 
     {
 		
 		if ((ADCSRA & (1<<ADSC))==0) // ADSC bit goes to 0
 		{
 			clock_ADC = ADC; // 10-bit read
-			sprintf(buffer,"ADC:%d",clock_ADC);
-			USART_putstring(buffer);
-			USART_send(10);
-			USART_send(13);
-			if (clock_ADC>512)
-			{
-				set_bit(PORTB,0);
-			}
-			else
-			{
-				clr_bit(PORTB,0);
-			}
 			ADCSRA |= (1<<ADSC) ; //Start a conversion
 		}
-		/*
+		
+		
 		if (USART_ready()){
 			char uart_byte = USART_receive();
 			///tog_bit(PORTB,0);
+			shift_out_byte_595(uart_byte);
+			set_bit(PORTB,SHIFT_LATCH_PIN);	// Latch output
+			clr_bit(PORTB,SHIFT_LATCH_PIN);
 			USART_send(uart_byte);
-		}*/
+		}
 		
 		
     }
