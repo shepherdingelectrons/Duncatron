@@ -31,6 +31,7 @@
 #define DATABUS_QH_PIN 3 // PC3
 
 #define IGNORE_ADC 1
+//#define USE_UART 1
 #define ADC_PIN 7// PORT C Change to 7 on actual board else use PC3 (databus_QH to test)
 
 #define CLK_PAUSE 0
@@ -41,8 +42,7 @@
 #define DELAY_LOOP(loop_count) for (uint32_t i=0;i<loop_count;i++) { asm("nop");}
 #define PAUSE_THRESHOLD 50
 #define MAX_THRESHOLD 1000
-#define LOOP_MINIMUM 100
-
+#define LOOP_MINIMUM 40
 
 void USART_init(void){
 	UBRR0H = (uint8_t)(BAUD_PRESCALLER>>8);
@@ -224,6 +224,37 @@ void print_hex16(uint16_t number)
 	print_hex_nibble(number&0x0F);
 }
 
+void print_signals(uint8_t control_byte, uint8_t signal_n)
+{
+	uint8_t diff_byte;
+	uint8_t compares[3]={BYTE0_INACTIVE,BYTE1_INACTIVE,BYTE2_INACTIVE}, compare_byte;
+	
+	compare_byte=compares[signal_n];
+	diff_byte = control_byte ^ compare_byte;
+	
+	for (uint8_t i=0;i<8;i++)
+	{
+		if (diff_byte & (1<<i)) // found an active signal at position i
+		{
+			USART_send('A'+i+signal_n*8);
+		}
+	}
+	
+}
+
+void set_signals(uint8_t byte0, uint8_t byte1, uint8_t byte2)
+{
+	shift_out_byte_595(byte2);
+	shift_out_byte_595(byte1);
+	shift_out_byte_595(byte0);
+	
+	set_bit(PORTB,SHIFT_LATCH_PIN);	// Latch output of control signals
+	clr_bit(PORTB,SHIFT_LATCH_PIN);
+		
+	set_bit(PORTC,CLK_PIN); //PC1 high, clock signal latch
+	clr_bit(PORTC,CLK_PIN); //PC1 low
+}
+
 int main(void)
 {
 	uint8_t flags, instruction, microcode_counter=0;
@@ -237,13 +268,14 @@ int main(void)
 	
 	setup_pins();
 	adc_setup();
-	USART_init();
 	
-    /*shift_out_byte_595(0x01); // just a test
-				
-	set_bit(PORTB,SHIFT_LATCH_PIN);	// Latch output
-	clr_bit(PORTB,SHIFT_LATCH_PIN);
-	*/
+	set_signals(BYTE0_INACTIVE,BYTE1_INACTIVE,BYTE2_INACTIVE);
+	
+	#ifdef USE_UART
+	USART_init();
+	#endif
+	
+
     while (1) 
     {
 		
@@ -254,7 +286,7 @@ int main(void)
 			#else
 				clock_ADC = ADC; // 10-bit read
 			#endif
-			ADCSRA |= (1<<ADSC) ; //Start a conversion
+			//ADCSRA |= (1<<ADSC) ; //Start a conversion
 			
 			// decide on State based on whether we are paused, running or max running.
 			if (clock_ADC<PAUSE_THRESHOLD)
@@ -292,7 +324,8 @@ int main(void)
 			control_byte0 = pgm_read_byte(control0+address); // Need to think carefully about order signals emerge from shift register
 			control_byte1 = pgm_read_byte(control1+address);
 			control_byte2 = pgm_read_byte(control2+address);
-					
+			
+			#ifdef USE_UART
 			print_hex16(address);
 			USART_send('*');
 			print_hex8(instruction);
@@ -307,8 +340,15 @@ int main(void)
 			USART_send(':');
 			print_hex8(control_byte2);
 			
+			USART_send('#');
+			print_signals(control_byte0,0);
+			print_signals(control_byte1,1);
+			print_signals(control_byte2,2);
+			
+			
 			USART_send(10);
 			USART_send(13);
+			#endif
 			
 			shift_out_byte_595(control_byte2);
 			shift_out_byte_595(control_byte1);
@@ -317,19 +357,31 @@ int main(void)
 			set_bit(PORTB,SHIFT_LATCH_PIN);	// Latch output of control signals
 			clr_bit(PORTB,SHIFT_LATCH_PIN);
 			
-			DELAY_LOOP(loop_wait);
+			if(clock_status!=CLK_MAX) DELAY_LOOP(loop_wait);
 			set_bit(PORTC,CLK_PIN);
+			
 			microcode_counter++;
 			if (control_byte0 & (1<<SIGNAL_MC_reset))
 			{
 				microcode_counter = 0;
-				USART_putstring("MC_RESET");
+				#ifdef USE_UART
+					USART_putstring("MC_RESET");
+					USART_send(10);
+					USART_send(11);
+				#endif
 			}
-			microcode_counter&=7; // for now
+			microcode_counter&=7; // for now, shouldn't be needed though
+			
+			if (control_byte2 & (1<<SIGNAL_HALT))
+			{
+				while(1){} // Sit in an infinite loop... HALT
+			}
 			DELAY_LOOP(loop_wait);
 			clr_bit(PORTC,CLK_PIN);
 			ADCSRA |= ADSC ; //Start a conversion again because we changed a pin on port C
 		}
+		
+		#ifdef USE_UART
 		
 		if (USART_ready()){
 			char uart_byte = USART_receive();
@@ -353,6 +405,7 @@ int main(void)
 			clr_bit(PORTB,SHIFT_LATCH_PIN);
 			//USART_send(uart_byte);
 		}
+		#endif
 		
 		
     }
