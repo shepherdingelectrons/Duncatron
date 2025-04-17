@@ -390,6 +390,42 @@ class Assembler:
         f.close()
         print("Binary written")
 
+    def burn_headerfile(self):
+        size = self.maxPOS+1
+        Hfilename = "BurnProgram.h" #self.asmfilename.split('.')[0]+".h"
+        print("Burning header file..."+Hfilename+" size:"+str(size)+" bytes")
+
+        import datetime
+        import os
+        import time
+
+        time_seconds = int(time.time())  # seconds elapsed since 1st Jan 1970 
+
+        script_name = os.path.basename(__file__)
+
+        f = open(Hfilename,"w")
+
+        f.write("// File generated automatically by "+script_name+"\n")
+        f.write("// Source ASM: "+str(self.asmfilename)+"\n")
+        now = datetime.datetime.now()
+        f.write("// File created: "+str(now)+"\n\n")
+        f.write("#define BURN_BINARY 1\n\n")
+        unique_ID = "0x{:08x}".format(time_seconds)
+        f.write("uint32_t unique_ID = "+unique_ID+"; // Stored in EEPROM when burnt to avoid re-burning\n")
+        f.write("uint16_t program_code_len = "+str(size)+"; // Size in bytes\n\n")
+
+        f.write("const PROGMEM uint8_t BurnProgram[] = {")
+        for b_num,b in enumerate(self.memory[0:size]):
+            if b_num % 16 == 0:
+                f.write("\n")
+            f.write("0x{:02x}".format(b))
+            if b_num!=size-1:
+                f.write(",")
+            
+        f.write("};\n")
+        f.close()
+        print("Header file written")
+
 if __name__=="__main__":
     #from .define_instructions import define_instructions
     memory = bytearray(0x10000)
@@ -403,6 +439,7 @@ if __name__=="__main__":
         for lab in asm.labels:
             print(lab,":",hex(asm.labels[lab]))
         asm.burn_binary()
+        asm.burn_headerfile()
     else:
         print("Assembling failed!")
 
