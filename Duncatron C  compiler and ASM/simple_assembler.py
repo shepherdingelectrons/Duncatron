@@ -10,6 +10,8 @@ class Assembler:
     DATABYTES = 259
     DATASTRING = 260
     DATAWORDS = 261
+
+    UART_CHAR = 262
     
     def __init__(self,filename,memory,text=""):
         self.lines = []
@@ -192,6 +194,12 @@ class Assembler:
                         pointer+=1
                     self.write_memory(pointer,0)#self.memory[pointer]=0 # Add zero terminator automatically
                     pointer+=1
+                elif opcode == self.UART_CHAR:
+                    uart_byte = ord(asm[1])
+                    UART_OPCODE = self.machinecode("MOV U,0x00")[0]
+                    self.write_memory(pointer,UART_OPCODE)
+                    self.write_memory(pointer+1,uart_byte)
+                    pointer+=2
                 else:
                     print("Don't know how to process opcode! OPCODE=",opcode)
                     return False
@@ -205,6 +213,9 @@ class Assembler:
             for lab in self.labels:
                 print(lab,":",hex(self.labels[lab]),self.labels[lab])
 
+        if success:
+            self.trim_binary()
+            
         return success
 
     def write_memory(self,position,byte):
@@ -326,8 +337,9 @@ class Assembler:
         self.asmregex.append(("^(MOV r0r1,)([^0^x].*)$",self.MEMORY_LABEL)) # this could be generalised in future to all 16-bit memory reference instructions
         self.asmregex.append(("^(MOV r2r3,)([^0^x].*)$",self.MEMORY_LABEL)) # this could be generalised in future to all 16-bit memory reference instructions
         self.asmregex.append(("^(MOV r4r5,)([^0^x].*)$",self.MEMORY_LABEL)) # this could be generalised in future to all 16-bit memory reference instructions
-             
-        
+
+        # Use characters for mov U,0x@@, i.e. mov U,'A'
+        self.asmregex.append(("^MOV U,'(.)'$",self.UART_CHAR))
         return True
     
     def machinecode(self,asm_line):
@@ -341,7 +353,7 @@ class Assembler:
             if match_result:
                 machine_code.append(opcode)
                 for match in match_result.groups():
-                    if opcode!=self.DATASTRING:
+                    if opcode!=self.DATASTRING and opcode!=self.UART_CHAR:
                         try:
                             machine_code.append(int("0x"+match,16))
                         except ValueError:
@@ -381,6 +393,16 @@ class Assembler:
             cleaned = opcode
         return cleaned
 
+    def trim_binary(self):
+        # removes trailing zeros from file to allow defining variables in RAM easily
+        last_data_pos = 0
+        for pos,byte in enumerate(self.memory):
+            if byte!=0:
+                last_data_pos = pos
+        print("Trimmed binary, last data pos = ", last_data_pos)
+
+        self.maxPOS = last_data_pos+1 # Add one in case the last byte is a zero-terminated string
+
     def burn_binary(self):
         size = self.maxPOS+1
         binfilename = self.asmfilename.split('.')[0]+".bin"
@@ -399,6 +421,7 @@ class Assembler:
         import os
         import time
 
+        print("Time is:",time.ctime())
         time_seconds = int(time.time())  # seconds elapsed since 1st Jan 1970 
 
         script_name = os.path.basename(__file__)
@@ -430,8 +453,9 @@ if __name__=="__main__":
     #from .define_instructions import define_instructions
     memory = bytearray(0x10000)
     #asm = Assembler("asm files\\boot.txt",memory,"")
-    filename="test.asm"#"G:\\test.asm"
-        
+    filename="..\Building\\SystemOS.asm"
+    #filename = "asm files\\super_simple_halt.asm"
+    
     asm = Assembler(filename,memory,"")
     success = asm.assemble()
     if success:

@@ -1,4 +1,4 @@
-#define SIGNAL_Ai 0 	//Active LOW
+#define SIGNAL_Ai 0 	//Active LOW 
 #define SIGNAL_ALUo 1	//Active LOW
 #define SIGNAL_Ii 2		//Active LOW
 #define SIGNAL_PCo 3	//Active LOW
