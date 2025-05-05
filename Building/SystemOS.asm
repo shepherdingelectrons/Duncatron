@@ -124,7 +124,7 @@ mov U,A ; send character it back!
 mov [r2r3],A ; Write character to memory
 inc r2r3
 inc r4 
-jmp handle_input.exit
+jmp handle_input.exit 
 
 handle_input.backchar:
 mov A,r4
