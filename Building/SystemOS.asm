@@ -53,12 +53,12 @@ execute_cmd:
 	cmp A,0x00
 	jz execute_cmd.next0	; i.e. if r5 = 0 (no match)
 	; 'exit' found
-	mov r4,0xff		; r4!=0x00
+	mov r4,0xff		; r4=0xFF is the return code that is checked for to signify exit condition
 	pop T
 	ret
 	;jz main.exit	; exit main loop and HALT
 execute_cmd.next0:
-	mov r0r1,program_str
+	mov r0r1,program_str	; check for 'prog' string
 	mov r2r3,input_str 
 	push_pc+1
 	call cmp_str
@@ -76,7 +76,79 @@ execute_cmd.next0:
 	jmp execute_cmd.exit
 
 execute_cmd.next1:
+	mov r0r1,write_byte_str ; check for w 0x#### 0x## command
+	mov r2r3,input_str
+	mov r5,0x02			; set zeropage memory address for wildcard characters
+	push_pc+1
+	call cmp_str_special
+	mov A,r5
+	cmp A,0x00
+	jz execute_cmd.next2 ; r5 ==0  means command not recognised, check next one
+	; Convert string to 16-bit hex address, convert write-byte string to 8-bit value
+	; Write write-byte to 16-hex address (be careful of register usage in conversion functions)
+	mov r4,[0x02]	; high hex nibble in ascii, 0-9/a-f/A-F
+	mov r5,[0x03]	; low hex nibble in ascii
+	push_pc+1
+	call ascii_hex_to_byte
+	mov r0,r5
+	
+	mov r4,[0x04]	; high hex nibble in ascii, 0-9/a-f/A-F
+	mov r5,[0x05]	; low hex nibble in ascii
+	push_pc+1
+	call ascii_hex_to_byte
+	mov r1,r5
+	
+	; we now have the 16-bit address in r0r1
+	mov r4,[0x06]	; high hex nibble in ascii, 0-9/a-f/A-F
+	mov r5,[0x07]	; low hex nibble in ascii
+	push_pc+1
+	call ascii_hex_to_byte
+	mov A,r5
+	mov [r0r1],A
+	mov U,'O'
+	mov U,'K'
+	mov U,0x0A
+	mov U,0x0D
+	
+	jmp execute_cmd.exit
+	
+execute_cmd.next2:
+	mov r0r1,read_byte_str ; check for r 0x#### command
+	mov r2r3,input_str
+	mov r5,0x02			; set zeropage memory address for wildcard characters
+	push_pc+1
+	call cmp_str_special
+	mov A,r5
+	cmp A,0x00
+	jz execute_cmd.next3 ; r5 ==0  means command not recognised, check next one
+	; Convert string to 16-bit hex address, read byte and display as hex
+	; (be careful of register usage in conversion functions)
+	mov r4,[0x02]	; high hex nibble in ascii, 0-9/a-f/A-F
+	mov r5,[0x03]	; low hex nibble in ascii
+	push_pc+1
+	call ascii_hex_to_byte
+	mov r0,r5
+	
+	mov r4,[0x04]	; high hex nibble in ascii, 0-9/a-f/A-F
+	mov r5,[0x05]	; low hex nibble in ascii
+	push_pc+1
+	call ascii_hex_to_byte
+	mov r1,r5
+	
+	; we now have the 16-bit address in r0r1
+	mov r5,0x01	; print 0x in print_hex
+	mov A,[r0r1]
+	mov r4,A
+	push_pc+1
+	call print_hex
+	mov U,0x0A
+	mov U,0x0D
+	
+	jmp execute_cmd.exit
+	
+execute_cmd.next3:
 ; ... other programs here
+
 execute_cmd.error:
 ; Else, command not found
 ; Throw an error
@@ -620,6 +692,9 @@ interupt_text: dstr 'Interupt called!'
 exit_str: dstr 'exit'
 goodbye_str: dstr 'Bye!'
 error_str: dstr 'ERROR'
+write_byte_str: dstr 'w 0x#### 0x##'
+read_byte_str: dstr 'r 0x####'
+
 program_str: dstr 'prog'
 program_mode_str: ; Humans can input bytes using hex 0x##, computers by sending byte directly ie: #
 dstr 'Entering PROGRAMMING mode. Commands:' ; this comment gets ignored
