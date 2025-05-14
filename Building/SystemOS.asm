@@ -348,7 +348,10 @@ cmp_str_special.start:
 	
 cmp_str_special.wildcard:
 	mov A,[r2r3]	; get wildcard character from r2r3 string
-	mov [r4r5],A;[0x02],A	; put into zero-page address 0x02 (hard coded for now)
+	cmp A,0x00		; catch the case that the matched character is actually the end of string...
+	jz cmp_str_special.false	; # != 0x00 so raise mismatch case
+	
+	mov [r4r5],A; put into zero-page address 0x80:r5
 	inc r0r1
 	inc r2r3
 	inc r5			; no memory overflow checking...
