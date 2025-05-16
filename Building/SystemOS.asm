@@ -23,18 +23,17 @@ main_loop:
 	call handle_input	; returns r5=0 if no string, else r5=1
 	mov A,r5
 	cmp A,0x01
-	jz main_loop.exe	; if an input is available, try and execute it
+	jnz main_loop
+	; If r5==1 then an input is available
+	push_pc+1
+	call execute_cmd ; Try and execute command
+	mov A,r4	; check return code
+	cmp A,0xff	; if r4==0xff then means a special case where running main.exit
+	jz main.exit
+	
 	jmp main_loop
 
-main_loop.exe:
-	push_pc+1
-	call execute_cmd
-	; check return code
-	mov A,r4
-	cmp A,0xff
-	jz main.exit
-	jmp main_loop
-	
+
 main.exit:
 	mov r0r1,goodbye_str
 	push_pc+1
