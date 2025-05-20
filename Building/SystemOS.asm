@@ -43,28 +43,96 @@ main.exit:
 
 ; ###########################  Execute commands if matched #########################################
 ; ##############  r4 returns 0xff (non-zero) to exit main(), else r4 = 0 (doing nothing for now)  ##
-execute_cmd:	
-	mov r0r1,exit_str
-	mov r2r3,input_str 
+
+COMMAND_TABLE_LEN equ 0x05
+
+main_commands_table:
+dw exit_str, prog_str, write_byte_str, read_byte_str
+dw help_str
+
+main_commands_jumptable:
+dw execute_cmd.run_exit, execute_cmd.prog, execute_cmd.write_byte, execute_cmd.read_byte
+dw execute_cmd.help
+
+exit_str: dstr 'exit'
+prog_str: dstr 'prog'
+write_byte_str: dstr 'w 0x#### 0x##'
+read_byte_str: dstr 'r 0x####'
+help_str: dstr 'help'
+
+execute_cmd:
+	mov r2r3,main_commands_table ; pointer to command table, contains list of pointers
+	mov r4,0x00	; command counter
+	
+execute_cmd.checkcmds_loop:
+	; need to get address at r2r3 into r0r1:
+	mov A,[r2r3]	; HIGH
+	mov r0,A
+	inc r2r3
+	mov A,[r2r3]	; LOW
+	mov r1,A
+	
+	; r0r1 now holds the specific command string address
+	push r2
+	push r3
+	mov r2r3,input_str
+	mov r5,0x02	; position in zeropage to put special wild card characters
 	push_pc+1
-	call cmp_str
+	call cmp_str_special
 	mov A,r5
-	cmp A,0x00
-	jz execute_cmd.next0	; i.e. if r5 = 0 (no match)
-	; 'exit' found
+	cmp A,0x00 ; if r5!=0 then command recognised, r4 holds array position
+	pop r3
+	pop r2
+	
+	jnz execute_cmd.success
+	
+	inc r2r3
+
+	inc r4	; Next pointer position
+	mov A,r4	; instruction not needed?
+
+	cmp A,COMMAND_TABLE_LEN ; finished all main commands?
+	jnz execute_cmd.checkcmds_loop
+	; If we got here then we didn't find any matches...
+
+execute_cmd.error:
+	; Else, command not found
+	; Throw an error
+	mov r0r1,error_str
+	push_pc+1
+	call print_str	
+
+execute_cmd.exit:
+	mov r2r3,input_str ; setup new input string
+	mov r4,0x00
+	mov U,0x3E ; ">"
+
+	pop T
+	RET
+
+execute_cmd.success: ; use r4 as an index for a jump table
+	mov r0r1,main_commands_jumptable
+	mov A,r4 ; index into jump table
+	shl A
+	add A,r1 ; add r0r1+A --> A is jump table index
+	mov r1,A
+	mov A,r0
+	addc A,0x00
+	mov r0,A 	; r0r1 is now the pointer to the desired jump label
+
+	mov A,[r0r1]	; HIGH byte of desired jump label
+	push A
+	inc r0r1
+	mov A,[r0r1]	; LOW byte of desired jump label
+	push A
+	pop PC ; jmp!
+
+execute_cmd.run_exit: ; 'exit' found
 	mov r4,0xff		; r4=0xFF is the return code that is checked for to signify exit condition
 	pop T
 	ret
-	;jz main.exit	; exit main loop and HALT
-execute_cmd.next0:
-	mov r0r1,program_str	; check for 'prog' string
-	mov r2r3,input_str 
-	push_pc+1
-	call cmp_str
-	mov A,r5
-	cmp A,0x00
-	jz execute_cmd.next1	; if r5 = 0 (no match)
-	; 'prog' found
+	
+execute_cmd.prog:
 	push_pc+1
 	call program_mode
 	; would return here from program_mode if called
@@ -74,15 +142,7 @@ execute_cmd.next0:
 	
 	jmp execute_cmd.exit
 
-execute_cmd.next1:
-	mov r0r1,write_byte_str ; check for w 0x#### 0x## command
-	mov r2r3,input_str
-	mov r5,0x02			; set zeropage memory address for wildcard characters
-	push_pc+1
-	call cmp_str_special
-	mov A,r5
-	cmp A,0x00
-	jz execute_cmd.next2 ; r5 ==0  means command not recognised, check next one
+execute_cmd.write_byte:
 	; Convert string to 16-bit hex address, convert write-byte string to 8-bit value
 	; Write write-byte to 16-hex address (be careful of register usage in conversion functions)
 	mov r4,[0x02]	; high hex nibble in ascii, 0-9/a-f/A-F
@@ -111,15 +171,7 @@ execute_cmd.next1:
 	
 	jmp execute_cmd.exit
 	
-execute_cmd.next2:
-	mov r0r1,read_byte_str ; check for r 0x#### command
-	mov r2r3,input_str
-	mov r5,0x02			; set zeropage memory address for wildcard characters
-	push_pc+1
-	call cmp_str_special
-	mov A,r5
-	cmp A,0x00
-	jz execute_cmd.next3 ; r5 ==0  means command not recognised, check next one
+execute_cmd.read_byte:
 	; Convert string to 16-bit hex address, read byte and display as hex
 	; (be careful of register usage in conversion functions)
 	mov r4,[0x02]	; high hex nibble in ascii, 0-9/a-f/A-F
@@ -144,24 +196,34 @@ execute_cmd.next2:
 	mov U,0x0D
 	
 	jmp execute_cmd.exit
+
+execute_cmd.help:
+	mov r4,COMMAND_TABLE_LEN
+	mov r2r3,main_commands_table
+	help.printloop:
+		
+		; need to get address at r2r3 into r0r1:
+		mov A,[r2r3]	; HIGH
+		mov r0,A
+		inc r2r3
+		mov A,[r2r3]	; LOW
+		mov r1,A
+		
+		push_pc+1
+		call print_str
+		
+		inc r2r3
+		dec r4
+		mov A,r4	; A may already contain r4 from above?
+		cmp A,0x00
+		jnz help.printloop
+		
+	jmp execute_cmd.exit
 	
 execute_cmd.next3:
 ; ... other programs here
+	jmp execute_cmd.exit
 
-execute_cmd.error:
-; Else, command not found
-; Throw an error
-	mov r0r1,error_str
-	push_pc+1
-	call print_str
-
-execute_cmd.exit:
-	mov r2r3,input_str ; setup new input string
-	mov r4,0x00
-	mov U,0x3E ; ">"
-
-	pop T
-	RET
 
 ; ########### Interupt vector ##################
 INTERUPT:
@@ -691,13 +753,9 @@ welcome: dstr 'Welcome to Duncatron v1.0'
 ready: dstr 'READY'
 helloworld: dstr 'Hello world @=)'
 interupt_text: dstr 'Interupt called!'
-exit_str: dstr 'exit'
 goodbye_str: dstr 'Bye!'
 error_str: dstr 'ERROR'
-write_byte_str: dstr 'w 0x#### 0x##'
-read_byte_str: dstr 'r 0x####'
 
-program_str: dstr 'prog'
 program_mode_str: ; Humans can input bytes using hex 0x##, computers by sending byte directly ie: #
 dstr 'Entering PROGRAMMING mode. Commands:' ; this comment gets ignored
 dstr '			h 0x##	; set high address to 0x## (#=byte)'
@@ -723,6 +781,7 @@ dstr '			w#  	; write the byte # at current address'
 ; Tidy up EOL (13,10 = 0x0D,0x0A) behaviour to make automated access easier
 ; add 'ws 0x##' and 'rs 0x##' = write serial and read serial, 
 ; where '0x##' is the number of characters to write/read in a following serial stream
+
 
 program_cmd_table:
 dw cmd0,cmd1,cmd2,cmd3,cmd4,cmd5,cmd6,cmd7,cmd8,cmd9,cmdA,cmdB,cmdC
