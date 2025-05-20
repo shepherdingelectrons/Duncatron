@@ -12,6 +12,8 @@ class Assembler:
     DATAWORDS = 261
 
     UART_CHAR = 262
+    EQU_SYMBOL = 263
+
     
     def __init__(self,filename,memory,text=""):
         self.lines = []
@@ -27,8 +29,20 @@ class Assembler:
         self.asmregex = []
         self.labels = {} # Dictionary of labels and their memory addresses
         self.labelref = []
+        self.equ_symbols = {}
 
         self.lookupASM = []
+
+        self.pointer = 0
+
+        self.POPT_opcode = None
+        self.RET_opcode = None
+        self.INT_opcode = None
+        self.RETI_opcode = None
+        self.PUSHPC_opcode = None
+
+        self.was_POPT = False
+        self.was_PUSHPC = False
      
     def read_and_clean_text(self,text):
         print("Warnng, this doesn't implement safe ; and : handling, unlike read_and_clean_file")
@@ -98,6 +112,12 @@ class Assembler:
 
         return address
 
+    def add_equ_symbol(self, symbol, replacement_value):
+        if symbol in self.equ_symbols:
+            return False
+        self.equ_symbols[symbol] = replacement_value
+        return True
+    
     def backfill_references(self):
         for reference in self.labelref:
             label,address = reference
@@ -114,97 +134,24 @@ class Assembler:
         print("Making regex...")
         if not self.make_regex(): return False
         print("Regex complete")
-        POPT_opcode = self.machinecode("POP T")[0]
-        RET_opcode = self.machinecode("RET")[0]
-        INT_opcode = self.machinecode("INT")[0]
-        RETI_opcode = self.machinecode("RETI")[0]
-        PUSHPC_opcode = self.machinecode("PUSH_PC+1")[0]
+        self.POPT_opcode = self.machinecode("POP T")[0]
+        self.RET_opcode = self.machinecode("RET")[0]
+        self.INT_opcode = self.machinecode("INT")[0]
+        self.RETI_opcode = self.machinecode("RETI")[0]
+        self.PUSHPC_opcode = self.machinecode("PUSH_PC+1")[0]
         
-        pointer = 0
+        self.pointer = 0
         for line_number,line in enumerate(self.lines):
             cleaned_line = self.clean_line(line)
             if cleaned_line==False:
                 print("Error processing line #"+str(line_number)+": "+line)
                 return False
 
-            asm = self.machinecode(cleaned_line)
-            #print(line_number)
-            if asm:
-                opcode = asm[0]
+            success_state = self.process_asm_line(cleaned_line,line_number)
+            if type(success_state) == str: # a new string was returned, try (once) to decode again
+                success_state = self.process_asm_line(success_state,line_number)
 
-                # try to flag some likely sources of programming bugs
-                
-                if opcode==RET_opcode and was_POPT==False:
-                    print("RET must be preceeded by 'POP T', line number:",line_number)
-                    return False
-                if opcode==INT_opcode and was_PUSHPC==False:
-                    print("INT must be preceeded by 'PUSH_PC+1', line number:", line_number)
-##                if opcode in CALL_opcodes and was_PUSHPC==False:
-                if len(cleaned_line)>=4: ## Detect CALLs this way
-                    if cleaned_line[:4].upper()=="CALL" and was_PUSHPC==False:
-                        print("CALLs must be preceeded by 'PUSH_PC+1', line number:", line_number)
-                        return False
-                if opcode==RETI_opcode and was_POPT:
-                    print("RETI should NOT be preceeded by 'POP T', line number:", line_number)
-                
-                was_POPT = (opcode==POPT_opcode)
-                was_PUSHPC = (opcode==PUSHPC_opcode)
-                
-                if opcode<256: # a normal instruction, write into memory
-                    for byte in asm:
-                        self.write_memory(pointer,byte)#self.memory[pointer]=byte
-                        pointer+=1
-                elif opcode==self.ADDRESS_DEFINITION: # other behaviour specified
-                    if asm[1]<pointer:
-                        print("ERROR. Memory label ("+hex(asm[1])+") on line number",line_number,"must be declared at higher address than current pointer ("+hex(pointer)+")")
-                        return False
-                    pointer=asm[1]
-                elif opcode==self.LABEL_DEFINITION:
-                    if not self.add_label(asm[1],pointer):
-                        return False
-
-                elif opcode == self.MEMORY_LABEL:
-                    pointer = self.add_call_or_jmp_reference(asm[1],asm[2],pointer,1,pureData=False)
-                elif opcode == self.DATABYTES or opcode == self.DATAWORDS:
-                    #print(asm[1],type(asm[1]))
-                    asm[1]=str(asm[1])
-                    
-                    if "," in asm[1]:
-                        bytelist = asm[1].split(",")
-                    else:
-                        bytelist = [str(asm[1])]
-                   
-                    for databyte in bytelist:
-                        int_bytelist,status = self.process_databyte(databyte.strip(),opcode)
-                        if status==0:
-                            print("Could not process data byte/word '"+databyte+"' at line number:",line_number)
-                            return False
-                        elif status==1:
-                            for byte in int_bytelist:
-                                self.write_memory(pointer,byte)
-                                #print("Writing:",pointer,byte)
-                                pointer+=1
-                        elif status==2:
-                            # treat as a memory label
-                            pointer = self.add_call_or_jmp_reference("",int_bytelist,pointer,0,pureData=True)
-                elif opcode == self.DATASTRING:
-                    datastr = self.process_datastring(asm[1])
-                    for character in datastr:
-                        self.write_memory(pointer,ord(character))#self.memory[pointer]=ord(character)
-                        pointer+=1
-                    self.write_memory(pointer,0)#self.memory[pointer]=0 # Add zero terminator automatically
-                    pointer+=1
-                elif opcode == self.UART_CHAR:
-                    uart_byte = ord(asm[1])
-                    UART_OPCODE = self.machinecode("MOV U,0x00")[0]
-                    self.write_memory(pointer,UART_OPCODE)
-                    self.write_memory(pointer+1,uart_byte)
-                    pointer+=2
-                else:
-                    print("Don't know how to process opcode! OPCODE=",opcode)
-                    return False
-            elif asm==False:
-                print("Failed to generate machine code on line:",line_number,":",line)
+            if success_state!=True:
                 return False
 
         success = self.backfill_references()
@@ -218,6 +165,121 @@ class Assembler:
             
         return success
 
+    def process_asm_line(self,cleaned_line,line_number):
+        asm = self.machinecode(cleaned_line)
+        
+        if asm:
+            opcode = asm[0]
+
+            # try to flag some likely sources of programming bugs
+            
+            if opcode==self.RET_opcode and self.was_POPT==False:
+                print("RET must be preceeded by 'POP T', line number:",line_number)
+                return False
+            if opcode==self.INT_opcode and self.was_PUSHPC==False:
+                print("INT must be preceeded by 'PUSH_PC+1', line number:", line_number)
+##                if opcode in CALL_opcodes and was_PUSHPC==False:
+            if len(cleaned_line)>=4: ## Detect CALLs this way
+                if cleaned_line[:4].upper()=="CALL" and self.was_PUSHPC==False:
+                    print("CALLs must be preceeded by 'PUSH_PC+1', line number:", line_number)
+                    return False
+            if opcode==self.RETI_opcode and self.was_POPT:
+                print("RETI should NOT be preceeded by 'POP T', line number:", line_number)
+            
+            self.was_POPT = (opcode==self.POPT_opcode)
+            self.was_PUSHPC = (opcode==self.PUSHPC_opcode)
+            
+            if opcode<256: # a normal instruction, write into memory
+                for byte in asm:
+                    self.write_memory(self.pointer,byte)#self.memory[pointer]=byte
+                    self.pointer+=1
+            elif opcode==self.ADDRESS_DEFINITION: # other behaviour specified
+                if asm[1]<self.pointer:
+                    print("ERROR. Memory label ("+hex(asm[1])+") on line number",line_number,"must be declared at higher address than current pointer ("+hex(self.pointer)+")")
+                    return False
+                self.pointer=asm[1]
+            elif opcode==self.LABEL_DEFINITION:
+                if not self.add_label(asm[1],self.pointer):
+                    return False
+
+            elif opcode == self.MEMORY_LABEL:
+                self.pointer = self.add_call_or_jmp_reference(asm[1],asm[2],self.pointer,1,pureData=False)
+            elif opcode == self.DATABYTES or opcode == self.DATAWORDS:
+                #print(asm[1],type(asm[1]))
+                asm[1]=str(asm[1])
+                
+                if "," in asm[1]:
+                    bytelist = asm[1].split(",")
+                else:
+                    bytelist = [str(asm[1])]
+               
+                for databyte in bytelist:
+                    int_bytelist,status = self.process_databyte(databyte.strip(),opcode)
+                    if status==0:
+                        print("Could not process data byte/word '"+databyte+"' at line number:",line_number)
+                        return False
+                    elif status==1:
+                        for byte in int_bytelist:
+                            self.write_memory(self.pointer,byte)
+                            #print("Writing:",pointer,byte)
+                            self.pointer+=1
+                    elif status==2:
+                        # treat as a memory label
+                        self.pointer = self.add_call_or_jmp_reference("",int_bytelist,self.pointer,0,pureData=True)
+            elif opcode == self.DATASTRING:
+                datastr = self.process_datastring(asm[1])
+                for character in datastr:
+                    self.write_memory(self.pointer,ord(character))#self.memory[pointer]=ord(character)
+                    self.pointer+=1
+                self.write_memory(self.pointer,0)#self.memory[pointer]=0 # Add zero terminator automatically
+                self.pointer+=1
+            elif opcode == self.UART_CHAR:
+                uart_byte = ord(asm[1])
+                UART_OPCODE = self.machinecode("MOV U,0x00")[0]
+                self.write_memory(self.pointer,UART_OPCODE)
+                self.write_memory(self.pointer+1,uart_byte)
+                self.pointer+=2
+            elif opcode == self.EQU_SYMBOL:
+                if self.add_equ_symbol(asm[1],asm[2])==False:
+                    print("Symbol",asm[1],"already defined on line:",line_number)
+                    return False
+            else:
+                print("Don't know how to process opcode! OPCODE=",opcode)
+                return False
+        elif asm==False:
+            
+            # command formats:
+            # int
+            # jmp 0x@@@@
+            # cmp A,0x04
+            symbol_found=False
+            
+            if " " in cleaned_line:
+                opcode,p0 = cleaned_line.split(" ")
+                p1 = None
+                if "," in p0:
+                    p0,p1 = p0.split(",")
+
+                if p0 in self.equ_symbols:
+                    p0 = self.equ_symbols[p0]
+                    symbol_found=True
+                if p1 in self.equ_symbols:
+                    p1 = self.equ_symbols[p1]
+                    symbol_found=True
+                                
+                
+                new_line = opcode+" "+p0
+                if p1!=None:
+                    new_line+=","+p1
+                
+            if symbol_found:
+                #print("Symbol replaced:",new_line)
+                return new_line
+            else:
+                print("Failed to generate machine code on line:",line_number,":",cleaned_line)
+            return False
+        return True
+    
     def write_memory(self,position,byte):
         self.memory[position]=byte
         if self.maxPOS<position:
@@ -340,6 +402,9 @@ class Assembler:
 
         # Use characters for mov U,0x@@, i.e. mov U,'A'
         self.asmregex.append(("^MOV U,'(.)'$",self.UART_CHAR))
+
+        # EQU symbol support
+        self.asmregex.append(("^(.*) equ (.*)$",self.EQU_SYMBOL))
         return True
     
     def machinecode(self,asm_line):
@@ -453,7 +518,8 @@ if __name__=="__main__":
     #from .define_instructions import define_instructions
     memory = bytearray(0x10000)
     #asm = Assembler("asm files\\boot.txt",memory,"")
-    filename="..\Building\\SystemOS.asm"
+    #filename="..\Building\\SystemOS.asm"
+    filename = "SystemOS.asm"
     #filename = "asm files\\super_simple_halt.asm"
     
     asm = Assembler(filename,memory,"")
@@ -464,6 +530,7 @@ if __name__=="__main__":
             print(lab,":",hex(asm.labels[lab]))
         asm.burn_binary()
         asm.burn_headerfile()
+        print(asm.equ_symbols)
     else:
         print("Assembling failed!")
 
