@@ -3,11 +3,14 @@ init:
 	mov [0x00],r0	; Zero page 0x00
 	mov [0x01],r1	; Zero page 0x01
 
+	push_pc+1
+	call draw_logo
+	
 	mov r0r1,welcome	; Print a greeting message
 	push_pc+1
 	call print_str
-
-	mov r0r1,ready	; Print a greeting message
+	
+	mov r0r1,ready	; READY
 	push_pc+1
 	call print_str
 
@@ -44,21 +47,61 @@ main.exit:
 ; ###########################  Execute commands if matched #########################################
 ; ##############  r4 returns 0xff (non-zero) to exit main(), else r4 = 0 (doing nothing for now)  ##
 
-COMMAND_TABLE_LEN equ 0x06
+draw_logo:
+
+	mov r0r1,duncatron1_0	; Print a greeting message
+	push_pc+1
+	call print_str
+	mov r0r1,duncatron1_1	; Print a greeting message
+	push_pc+1
+	call print_str
+	mov r0r1,duncatron1_2	; Print a greeting message
+	push_pc+1
+	call print_str
+	mov r0r1,duncatron1_3	; Print a greeting message
+	push_pc+1
+	call print_str
+	mov r0r1,duncatron1_4	; Print a greeting message
+	push_pc+1
+	call print_str
+	
+	pop T
+	RET
+	
+draw_logo_2:
+	mov r0r1,duncatron0	; Print a greeting message
+	push_pc+1
+	call print_str
+	mov r0r1,duncatron1	; Print a greeting message
+	push_pc+1
+	call print_str
+	mov r0r1,duncatron2	; Print a greeting message
+	push_pc+1
+	call print_str
+	mov r0r1,duncatron3	; Print a greeting message
+	push_pc+1
+	call print_str
+	
+	pop T
+	RET
+
+COMMAND_TABLE_LEN equ 0x08
 
 main_commands_table:
 dw exit_str, prog_str, write_byte_str, read_byte_str
-dw hex_str, help_str
+dw hex_str, logo_str, logo_str2, help_str
 
 main_commands_jumptable:
 dw execute_cmd.run_exit, execute_cmd.prog, execute_cmd.write_byte, execute_cmd.read_byte
-dw execute_cmd.hex, execute_cmd.help
+dw execute_cmd.hex, execute_cmd.draw_logo, execute_cmd.draw_logo_2, execute_cmd.help
 
 exit_str: dstr 'exit'
 prog_str: dstr 'prog'
 write_byte_str: dstr 'w 0x#### 0x##'
 read_byte_str: dstr 'r 0x####'
 hex_str: dstr 'hex 0x#### 0x##'
+logo_str: dstr 'logo'
+logo_str2: dstr 'logo2'
 help_str: dstr 'help'
 
 execute_cmd:
@@ -276,7 +319,7 @@ execute_cmd.hex:
 		mov [0x02],A
 		mov A,[r4r5]
 		cmp A,0x20	; 32 
-		jge endline_loop_display
+		jge endline_loop_display ; 0x7F = 127 = backspace might mess this up in Putty
 		mov A,0x2E ; '.'
 		
 		endline_loop_display:
@@ -295,6 +338,16 @@ execute_cmd.hex:
 	hex.leave:	
 	mov U,0x0A
 	mov U,0x0D
+	jmp execute_cmd.exit
+
+execute_cmd.draw_logo:
+	push_pc+1
+	call draw_logo
+	jmp execute_cmd.exit
+	
+execute_cmd.draw_logo_2:
+	push_pc+1
+	call draw_logo_2	
 	jmp execute_cmd.exit
 	
 execute_cmd.help:
@@ -877,11 +930,22 @@ dstr '			h#  	; set high address to # (#=byte)'
 dstr '			l#		; set low address to # (#=byte)'
 dstr '			w#  	; write the byte # at current address'
 
+; Logo generated here: https://patorjk.com/software/taag/#p=testall&f=Bulbhead&t=Duncatron%20
+duncatron0: dstr ' ____  __  __  _  _  ___    __   ____  ____  _____  _  _'  
+duncatron1: dstr '(  _ \(  )(  )( \( )/ __)  /__\ (_  _)(  _ \(  _  )( \( )'
+duncatron2: dstr ' )(_) ))(__)(  )  (( (__  /(__)\  )(   )   / )(_)(  )  ('
+duncatron3: dstr '(____/(______)(_)\_)\___)(__)(__)(__) (_)\_)(_____)(_)\_)' 
+
+duncatron1_0: dstr '    ____                         __'                 
+duncatron1_1: dstr '   / __ \__  ______  _________ _/ /__________  ____'     
+duncatron1_2: dstr '  / / / / / / / __ \/ ___/ __ `/ __/ ___/ __ \/ __ \'     
+duncatron1_3: dstr ' / /_/ / /_/ / / / / /__/ /_/ / /_/ /  / /_/ / / / /'     
+duncatron1_4: dstr '/_____/\__,_/_/ /_/\___/\__,_/\__/_/   \____/_/ /_/' 
+
 ; Tidy up commands, remove h# and l#
 ; Tidy up EOL (13,10 = 0x0D,0x0A) behaviour to make automated access easier
 ; add 'ws 0x##' and 'rs 0x##' = write serial and read serial, 
 ; where '0x##' is the number of characters to write/read in a following serial stream
-
 
 program_cmd_table:
 dw cmd0,cmd1,cmd2,cmd3,cmd4,cmd5,cmd6,cmd7,cmd8,cmd9,cmdA,cmdB,cmdC
