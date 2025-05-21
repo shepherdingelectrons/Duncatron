@@ -44,20 +44,21 @@ main.exit:
 ; ###########################  Execute commands if matched #########################################
 ; ##############  r4 returns 0xff (non-zero) to exit main(), else r4 = 0 (doing nothing for now)  ##
 
-COMMAND_TABLE_LEN equ 0x05
+COMMAND_TABLE_LEN equ 0x06
 
 main_commands_table:
 dw exit_str, prog_str, write_byte_str, read_byte_str
-dw help_str
+dw hex_str, help_str
 
 main_commands_jumptable:
 dw execute_cmd.run_exit, execute_cmd.prog, execute_cmd.write_byte, execute_cmd.read_byte
-dw execute_cmd.help
+dw execute_cmd.hex, execute_cmd.help
 
 exit_str: dstr 'exit'
 prog_str: dstr 'prog'
 write_byte_str: dstr 'w 0x#### 0x##'
 read_byte_str: dstr 'r 0x####'
+hex_str: dstr 'hex 0x#### 0x##'
 help_str: dstr 'help'
 
 execute_cmd:
@@ -127,11 +128,11 @@ execute_cmd.success: ; use r4 as an index for a jump table
 	push A
 	pop PC ; jmp!
 
-execute_cmd.run_exit: ; 'exit' found
+execute_cmd.run_exit: ; 'exit' command found
 	mov r4,0xff		; r4=0xFF is the return code that is checked for to signify exit condition
 	pop T
 	ret
-	
+
 execute_cmd.prog:
 	push_pc+1
 	call program_mode
@@ -197,6 +198,105 @@ execute_cmd.read_byte:
 	
 	jmp execute_cmd.exit
 
+execute_cmd.hex:
+	mov r4,[0x02]	; high hex nibble in ascii, 0-9/a-f/A-F
+	mov r5,[0x03]	; low hex nibble in ascii
+	push_pc+1
+	call ascii_hex_to_byte
+	mov r0,r5		; HIGH of start address
+	
+	mov r4,[0x04]	; high hex nibble in ascii, 0-9/a-f/A-F
+	mov r5,[0x05]	; low hex nibble in ascii
+	push_pc+1
+	call ascii_hex_to_byte
+	mov r1,r5		; LOW of start address
+	
+	mov r4,[0x06]	; high hex nibble in ascii, 0-9/a-f/A-F
+	mov r5,[0x07]	; low hex nibble in ascii
+	push_pc+1
+	call ascii_hex_to_byte
+	mov r3,r5		; number of bytes to display
+	mov r2,0x00		; r2 is counter
+	
+	hex.newline:
+	mov A,r2
+	cmp A,r3
+	je hex.leave	; check if we have read specified number of bytes yet
+	
+	mov U,0x0A
+	mov U,0x0D
+	
+	mov r5,0x01		; Display 16-bit address
+	mov r4,r0
+	push_pc+1
+	call print_hex
+	mov r4,r1
+	
+	mov r5,0x00
+	push_pc+1
+	call print_hex
+	
+	mov U,':'
+	mov U,' '
+	
+	hex.loop:
+		mov A,[r0r1]	; byte to print (r5!=0, display '0x', r5=0, don't display 0x)
+		mov r4,A
+		mov r5,0x00
+		push_pc+1
+		call print_hex
+		mov U,' '
+		
+		inc r0r1	; next position in memory
+		inc r2
+		mov A,r2
+		dec A
+		and A,0x0f	; A will contain r2
+		cmp A,0x0f
+		je hex.endline	; if counter is a multiple of 16 do a new line
+		
+		mov A,r2
+		cmp A,r3
+		jne hex.loop	; check if we have read specified number of bytes yet - if not, re-loop
+	
+	hex.endline:
+	; do some end line stuff
+	mov r4,r0
+	mov r5,r1 ; copy r0r1 pointer
+	
+	mov A,r5
+	sub A,0x10
+	mov r5,A
+	mov A,r4
+	subc A,0x00
+	mov r4,A
+	
+	mov A,0x00
+	hex.endline_loop:
+		mov [0x02],A
+		mov A,[r4r5]
+		cmp A,0x20	; 32 
+		jge endline_loop_display
+		mov A,0x2E ; '.'
+		
+		endline_loop_display:
+		mov U,A
+	
+		inc r4r5
+		mov A,[0x02]
+		inc A
+		cmp A,0x10
+		jne hex.endline_loop
+	
+	mov A,r2
+	cmp A,r3
+	jne hex.newline	; check if we have read specified number of bytes yet
+	
+	hex.leave:	
+	mov U,0x0A
+	mov U,0x0D
+	jmp execute_cmd.exit
+	
 execute_cmd.help:
 	mov r4,COMMAND_TABLE_LEN
 	mov r2r3,main_commands_table
@@ -749,7 +849,7 @@ dw program_mode.eoc,program_mode.leave
 ; 0x0C		number of bytes for serial writing and reading
 
 ; data labels don't have to be page-aligned
-welcome: dstr 'Welcome to Duncatron v1.0'
+welcome: dstr 'Welcome to Duncatron v1.0 - type "help" for commands'
 ready: dstr 'READY'
 helloworld: dstr 'Hello world @=)'
 interupt_text: dstr 'Interupt called!'
