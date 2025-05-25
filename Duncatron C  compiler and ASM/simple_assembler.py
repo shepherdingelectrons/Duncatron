@@ -52,7 +52,7 @@ class Assembler:
             self.lines.append(line.strip())
     
     def read_and_clean_file(self,filename):
-        with open(filename) as file:
+        with open(filename,encoding="utf-8") as file:
             for line in file:
                 # Find first ; character that isn't in a string
                 semi_pos = self.find_char(line,";")
@@ -180,7 +180,7 @@ class Assembler:
                 print("INT must be preceeded by 'PUSH_PC+1', line number:", line_number)
 ##                if opcode in CALL_opcodes and was_PUSHPC==False:
             if len(cleaned_line)>=4: ## Detect CALLs this way
-                if cleaned_line[:4].upper()=="CALL" and self.was_PUSHPC==False:
+                if cleaned_line[:4].upper()=="CALL" and self.was_PUSHPC==False and ":" not in cleaned_line:
                     print("CALLs must be preceeded by 'PUSH_PC+1', line number:", line_number)
                     return False
             if opcode==self.RETI_opcode and self.was_POPT:
