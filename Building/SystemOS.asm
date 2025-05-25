@@ -32,7 +32,9 @@ main_loop:
 	call execute_cmd ; Try and execute command
 	mov A,r4	; check return code
 	cmp A,0xff	; if r4==0xff then means a special case where running main.exit
-	jz main.exit
+	je main.exit
+	cmp A,0xfe
+	je init
 	
 	jmp main_loop
 
@@ -67,7 +69,7 @@ draw_logo:
 	
 	pop T
 	RET
-	
+		
 draw_logo_2:
 	mov r0r1,duncatron0	; Print a greeting message
 	push_pc+1
@@ -85,16 +87,17 @@ draw_logo_2:
 	pop T
 	RET
 
-COMMAND_TABLE_LEN equ 0x08
+COMMAND_TABLE_LEN equ 0x0A
 
 main_commands_table:
-dw exit_str, prog_str, write_byte_str, read_byte_str
-dw hex_str, logo_str, logo_str2, help_str
+dw reset_str, exit_str, prog_str, write_byte_str, read_byte_str
+dw hex_str, logo_str, logo_str2, call_str, help_str
 
 main_commands_jumptable:
-dw execute_cmd.run_exit, execute_cmd.prog, execute_cmd.write_byte, execute_cmd.read_byte
-dw execute_cmd.hex, execute_cmd.draw_logo, execute_cmd.draw_logo_2, execute_cmd.help
+dw execute_cmd.run_reset, execute_cmd.run_exit, execute_cmd.prog, execute_cmd.write_byte, execute_cmd.read_byte
+dw execute_cmd.hex, execute_cmd.draw_logo, execute_cmd.draw_logo_2, execute_cmd.call,  execute_cmd.help
 
+reset_str: dstr 'reset'
 exit_str: dstr 'exit'
 prog_str: dstr 'prog'
 write_byte_str: dstr 'w 0x#### 0x##'
@@ -102,6 +105,8 @@ read_byte_str: dstr 'r 0x####'
 hex_str: dstr 'hex 0x#### 0x##'
 logo_str: dstr 'logo'
 logo_str2: dstr 'logo2'
+call_str: dstr 'call 0x####'
+
 help_str: dstr 'help'
 
 execute_cmd:
@@ -171,8 +176,13 @@ execute_cmd.success: ; use r4 as an index for a jump table
 	push A
 	pop PC ; jmp!
 
-execute_cmd.run_exit: ; 'exit' command found
-	mov r4,0xff		; r4=0xFF is the return code that is checked for to signify exit condition
+execute_cmd.run_exit:
+	mov r4,0xff
+	pop T
+	ret
+
+execute_cmd.run_reset: ; 'reset' command found
+	mov r4,0xfe		; r4=0xFE is the return code for reset
 	pop T
 	ret
 
@@ -259,12 +269,13 @@ execute_cmd.hex:
 	push_pc+1
 	call ascii_hex_to_byte
 	mov r3,r5		; number of bytes to display
+	inc r3
 	mov r2,0x00		; r2 is counter
 	
 	hex.newline:
-	mov A,r2
-	cmp A,r3
-	je hex.leave	; check if we have read specified number of bytes yet
+	;mov A,r2
+	;cmp A,r3
+	;je hex.leave	; check if we have read specified number of bytes yet
 	
 	mov U,0x0A
 	mov U,0x0D
@@ -297,6 +308,7 @@ execute_cmd.hex:
 		and A,0x0f	; A will contain r2
 		cmp A,0x0f
 		je hex.endline	; if counter is a multiple of 16 do a new line
+		
 		
 		mov A,r2
 		cmp A,r3
@@ -349,7 +361,45 @@ execute_cmd.draw_logo_2:
 	push_pc+1
 	call draw_logo_2	
 	jmp execute_cmd.exit
+
+execute_cmd.call:
+	mov r4,[0x02]	; high hex nibble in ascii, 0-9/a-f/A-F
+	mov r5,[0x03]	; low hex nibble in ascii
+	push_pc+1
+	call ascii_hex_to_byte
+	mov r0,r5		; HIGH of start address
 	
+	mov r4,[0x04]	; high hex nibble in ascii, 0-9/a-f/A-F
+	mov r5,[0x05]	; low hex nibble in ascii
+	push_pc+1
+	call ascii_hex_to_byte
+	mov r1,r5		; LOW of start address
+	
+	push_pc+1	; push return address (3 bytes from here)
+	push r0		; byte 1
+	push r1		; byte 2
+	pop PC		; load r0r1 into PC - byte 3
+	jmp execute_cmd.exit
+
+execute_cmd.test_call:
+
+	push_pc+1		; ensures set PC to after call statement (3 bytes)
+	call draw_logo_2	; 0x@@ 0x@@@@
+	
+	;  This code means it is possible to CALL any given memory address and return correctly. 
+	;  Alternatively, if the push_pc+1 is omitted, one can JMP to any given memory location
+	
+	; it means one could have a command which calls and returns to arbitary memory location, i.e.:
+	; call 0x8234
+	; could add functionality to load any given program (over UART) into a certain memory address and then run it
+	
+	mov r0r1,draw_logo
+	push_pc+1	; push return address (3 bytes from here)
+	push r0		; byte 1
+	push r1		; byte 2
+	pop PC		; load r0r1 into PC - byte 3
+	jmp execute_cmd.exit
+
 execute_cmd.help:
 	mov r4,COMMAND_TABLE_LEN
 	mov r2r3,main_commands_table
