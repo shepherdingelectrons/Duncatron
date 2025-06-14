@@ -1,7 +1,12 @@
 init:
+NES_PORT equ 0x8100
+
 	mov r0r1,INTERUPT; setup interrupt jump vector
 	mov [0x00],r0	; Zero page 0x00
 	mov [0x01],r1	; Zero page 0x01
+
+	mov U,0x0A
+	mov U,0x0D
 
 	push_pc+1
 	call draw_logo
@@ -10,6 +15,16 @@ init:
 	push_pc+1
 	call print_str
 	
+	mov A,[NES_PORT]	; Checks if NES controller is connected
+	cmp A,0x00
+	jz no_nes
+	
+	mov r0r1,NES_found
+	push_pc+1
+	call print_str
+	mov U,0x0A
+	mov U,0x0D
+no_nes:
 	mov r0r1,ready	; READY
 	push_pc+1
 	call print_str
@@ -954,6 +969,7 @@ dw program_mode.eoc,program_mode.leave
 ; data labels don't have to be page-aligned
 welcome: dstr 'Welcome to Duncatron v1.0 - type "help" for commands'
 ready: dstr 'READY'
+NES_found: dstr 'NES controller found!'
 helloworld: dstr 'Hello world @=)'
 interupt_text: dstr 'Interupt called!'
 goodbye_str: dstr 'Bye!'

@@ -116,6 +116,7 @@ class Assembler:
         if symbol in self.equ_symbols:
             return False
         self.equ_symbols[symbol] = replacement_value
+        self.equ_symbols['['+symbol+']'] = '['+replacement_value+']' # also add as addressing
         return True
     
     def backfill_references(self):
@@ -259,7 +260,7 @@ class Assembler:
                 p1 = None
                 if "," in p0:
                     p0,p1 = p0.split(",")
-
+                print(opcode,p0,p1)
                 if p0 in self.equ_symbols:
                     p0 = self.equ_symbols[p0]
                     symbol_found=True
@@ -518,8 +519,8 @@ if __name__=="__main__":
     #from .define_instructions import define_instructions
     memory = bytearray(0x10000)
     #asm = Assembler("asm files\\boot.txt",memory,"")
-    #filename="..\Building\\SystemOS.asm"
-    filename = "SystemOS.asm"
+    filename="..\Building\\SystemOS.asm"
+    #filename = "SystemOS.asm"
     #filename = "asm files\\super_simple_halt.asm"
     
     asm = Assembler(filename,memory,"")

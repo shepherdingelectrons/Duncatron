@@ -175,7 +175,7 @@ uint8_t read_databus(void)
 {
 	uint8_t read_byte,bit;
 	
-	DELAY_LOOP(10000); // make sure all memory hardware has time to stabilise output
+	DELAY_LOOP(1000); // make sure all memory hardware has time to stabilise output
 	clr_bit(PORTC, DATABUS_READ_PIN); // grab data bus byte
 	set_bit(PORTC, DATABUS_READ_PIN);
 
@@ -426,8 +426,8 @@ void test_stuff(void)
 		{
 			while(1)
 			{
-				
-				};
+				writeMAR((uint16_t) Ireg_read<<8 | Ireg_write);
+			}
 		}
 		DELAY_LOOP(5000);
 	}
@@ -435,21 +435,30 @@ void test_stuff(void)
 	
 	for (code_index=0;code_index<program_code_len;code_index++)
 	{
-		write_byte = pgm_read_byte(BurnProgram+code_index);
-		writeMEM(code_index,write_byte);
-		DELAY_LOOP(10000);
-		read_byte = readMEM(code_index); 
+		write_byte = pgm_read_byte(BurnProgram+code_index); // Read what we should have
+		read_byte = readMEM(code_index); // Read what we do have
 		
-		if (read_byte!=write_byte)
+		if (read_byte!=write_byte) // If different, write the expected byte
+		{
+			writeMEM(code_index,write_byte);	// Try one write
+			DELAY_LOOP(50000);
+			read_byte = readMEM(code_index);
+		}
+		
+		if (read_byte!=write_byte) // Check the write went okay or not
 		{
 			DELAY_LOOP(2000000);
 			writeMAR((uint16_t) read_byte<<8 | write_byte);
 			while(1)
 			{
-				writeMAR(0xAAAA);
+				writeMAR((uint16_t) read_byte<<8 | write_byte);
+				DELAY_LOOP(500000);
+				writeMAR(code_index);
+				DELAY_LOOP(500000);
+				/*writeMAR(0xAAAA);
 				DELAY_LOOP(500000);
 				writeMAR(0x5555);
-				DELAY_LOOP(500000);
+				DELAY_LOOP(500000);*/
 			};
 		}	
 	}
