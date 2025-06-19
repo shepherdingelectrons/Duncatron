@@ -269,8 +269,9 @@ class ControlLogic():
         if self.Computer.console!=None:
             if self.Computer.U_reg.value!=-1: # Bit of a hack - means we just loaded a value into U reg for TX
                 if verbose: print(chr(self.Computer.U_reg.value), end='')
-                self.Computer.console.printToConsole(self.Computer.U_reg.value)
-                self.Computer.console.readQueue.append(self.Computer.U_reg.value)
+                #self.Computer.console.printToConsole(self.Computer.U_reg.value)
+                #self.Computer.console.readQueue.append(self.Computer.U_reg.value)
+                self.Computer.readQueue.append(self.Computer.U_reg.value) 
                 self.Computer.U_reg.value=-1
 
         if verbose:# and self.microcode_counter==2:
@@ -495,6 +496,7 @@ class Computer():
         self.CPU = ControlLogic(self) # Pass on reference to parent Computer object
         self.ALU = ArithmeticLogicUnit(self)
         self.console = None
+        self.readQueue = []
 
         #Registers need CPU to exist at this point for CPU.connect in register __init__
 
@@ -538,6 +540,20 @@ class Computer():
         # True = New behaviour, MC_RESET is ALWAYS asserted on the last instruction
         #       microcode and therefore clocks the INT logic it is de-asserted
         self.reset() # Starting positions
+
+    def write(self,bytechar):
+        # char should be a bytearray for compatibility with serial port objects
+        if len(bytechar)>1:
+            print("ERROR: bytearray to CPU write function should be a single character")
+        char = bytechar[0]
+        UART_RX = char &0xFF
+        self.U_reg.valueHI = UART_RX # Use U_reg.valueHI for RX
+        self.F_reg.value|=(1<<4) # Set RX_READY
+
+    def read(self):
+        readChars = bytearray(self.readQueue)
+        self.readQueue = []
+        return readChars
         
     def connectConsole(self,console):
         self.console = console
