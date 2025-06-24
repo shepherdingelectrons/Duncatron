@@ -1,5 +1,6 @@
 init:
 NES_PORT equ 0x8100
+SOUND_PORT equ 0x8101
 
 	mov r0r1,INTERUPT; setup interrupt jump vector
 	mov [0x00],r0	; Zero page 0x00
@@ -8,6 +9,9 @@ NES_PORT equ 0x8100
 	mov U,0x0A
 	mov U,0x0D
 
+	push_pc+1
+	call sound_off
+	
 	push_pc+1
 	call draw_logo
 	
@@ -22,8 +26,7 @@ NES_PORT equ 0x8100
 	mov r0r1,NES_found
 	push_pc+1
 	call print_str
-	mov U,0x0A
-	mov U,0x0D
+
 no_nes:
 	mov r0r1,ready	; READY
 	push_pc+1
@@ -102,15 +105,41 @@ draw_logo_2:
 	pop T
 	RET
 
-COMMAND_TABLE_LEN equ 0x0A
+sound_off:
+	mov A,0x9F
+	mov [SOUND_PORT],A
+	mov A,0xBF
+	mov [SOUND_PORT],A
+	mov A,0xDF
+	mov [SOUND_PORT],A
+	mov A,0xFF
+	mov [SOUND_PORT],A
+	pop T
+	ret
+
+COMMAND_TABLE_LEN equ 0x0C
+COMMAND_TABLE_LEN_MAX equ 0x10
 
 main_commands_table:
 dw reset_str, exit_str, prog_str, write_byte_str, read_byte_str
 dw hex_str, logo_str, logo_str2, call_str, help_str
+dw load_str, beep_str, 0x0000, 0x0000, 0x0000
+dw 0x0000 ; add empty slots
 
+; might be fun to add a command to add new command
+; addcmd 0x#### *		; * is new nomenclature to be implemented that puts remainder of string into buffer (or saves position of * without further processing)
+; i.e. "addcmd 0x8300 beep 0x##"
+; "addcmd 0x8400 spitest"
+; "addcmd 0x8500 print *"
+; "addcmd loadpage 0x8### 0x##" ; load a program into RAM at 0x8###, 0x## number of bytes
+; don't forget to increment COMMAND_TABLE_LEN (copy as a variable and put into RAM in init)
+; will be useful to load new functions into RAM memory and then add as commands
+ 
 main_commands_jumptable:
 dw execute_cmd.run_reset, execute_cmd.run_exit, execute_cmd.prog, execute_cmd.write_byte, execute_cmd.read_byte
 dw execute_cmd.hex, execute_cmd.draw_logo, execute_cmd.draw_logo_2, execute_cmd.call,  execute_cmd.help
+dw execute_cmd.load, execute_cmd.beep, 0x0000, 0x0000, 0x0000
+dw 0x0000 ; add empty slots
 
 reset_str: dstr 'reset'
 exit_str: dstr 'exit'
@@ -121,6 +150,8 @@ hex_str: dstr 'hex 0x#### 0x##'
 logo_str: dstr 'logo'
 logo_str2: dstr 'logo2'
 call_str: dstr 'call 0x####'
+load_str: dstr 'load 0x####'
+beep_str: dstr 'beep 0x####'
 
 help_str: dstr 'help'
 
@@ -396,6 +427,176 @@ execute_cmd.call:
 	pop PC		; load r0r1 into PC - byte 3
 	jmp execute_cmd.exit
 
+; ************************************receiveChar *********************************
+; Waits on the UART for a certain character (r2), character returned in A
+; inputs:
+; 	None
+; outputs:
+; 	received character in A 
+
+receiveChar:
+		mov A,F	;128 64 32 16 8  4   2  1
+		;F7  F6 SD RDY OF N  C  Z
+		and A,0x10 ; RX character is waiting
+		jz receiveChar
+	mov A,U		; get UART char
+	pop T
+	ret
+
+load_failstr: dstr 'LOAD failed!'
+load_waiting: dstr 'Waiting for handshake and transfer...'
+load_complete: dstr 'Complete!'
+
+execute_cmd.load:
+	mov r0r1,load_waiting
+	push_pc+1
+	call print_str
+	
+; Put load destination address into r0r1
+	mov r4,[0x02]	; high hex nibble in ascii, 0-9/a-f/A-F
+	mov r5,[0x03]	; low hex nibble in ascii
+	push_pc+1
+	call ascii_hex_to_byte
+	mov r0,r5		; HIGH of start address
+	
+	mov r4,[0x04]	; high hex nibble in ascii, 0-9/a-f/A-F
+	mov r5,[0x05]	; low hex nibble in ascii
+	push_pc+1
+	call ascii_hex_to_byte
+	mov r1,r5		; LOW of start address
+	
+	; HANDSHAKE
+	push_pc+1
+	call receiveChar	
+	cmp A,0x0A		; character returned in A
+	jnz load.fail
+	mov A,0xA0
+	mov U,A			; send character back
+	
+	push_pc+1
+	call receiveChar	
+	cmp A,0x55		; character returned in A
+	jnz load.fail
+	mov A,0xAA
+	mov U,A			; send character back
+	
+	push_pc+1
+	call receiveChar	
+	cmp A,0xAA		; character returned in A
+	jnz load.fail
+	mov A,0x55
+	mov U,A			; send character back
+	
+	; SEND ADDRESS
+	mov A,r0			; HIGH byte
+	mov U,A
+	push_pc+1
+	call receiveChar
+	cmp A,r0
+	jnz load.fail
+	
+	mov A,r1			; LOW byte
+	mov U,A
+	push_pc+1
+	call receiveChar
+	cmp A,r1
+	jnz load.fail
+	
+	mov U,'@'	; Acknowledge received and safe to send
+	
+	; Now receive the number of bytes (16-bit)
+	push_pc+1
+	call receiveChar	; High byte of num characters
+	mov U,A			; send character back
+	mov r2,A
+	
+	push_pc+1
+	call receiveChar	; Low byte of num characters
+	mov U,A			; send character back
+	mov r3,A
+	
+	; If we got here then we shook hands and the destination address was received and num bytes
+	
+	loadloop:
+		push_pc+1
+		call receiveChar	; byte to writeex
+		mov U,A			; echo character back
+		
+		mov [r0r1],A	; Write to memory.  We won't know if this character is wrong, but the programmer will
+		inc r0r1
+		
+		dec r3		; dec r2r3
+		mov A,r2
+		subc A,0x00
+		mov r2,A
+		
+		cmp A,0x00 ; is r2==0?
+		jnz loadloop
+		mov A,r3
+		cmp A,0x00
+		jnz loadloop
+		
+		; If we got here r2 = 0, r3 = 0, finished
+	
+	mov r0r1,load_complete
+	push_pc+1
+	call print_str
+	
+	jmp execute_cmd.exit
+	
+	load.fail:
+		mov U,'!'	; means we failed
+		mov r0r1, load_failstr
+		push_pc+1
+		call print_str
+		jmp execute_cmd.exit
+
+execute_cmd.beep:
+	mov r4,[0x02]	; high hex nibble in ascii, 0-9/a-f/A-F
+	mov r5,[0x03]	; low hex nibble in ascii
+	push_pc+1
+	call ascii_hex_to_byte
+	mov r0,r5		; HIGH of 10-bit n
+	
+	mov r4,[0x04]	; high hex nibble in ascii, 0-9/a-f/A-F
+	mov r5,[0x05]	; low hex nibble in ascii
+	push_pc+1
+	call ascii_hex_to_byte
+	mov r1,r5		; LOW of 10-bit n
+	
+	; First byte: 0b1-ch1-ch0-0-f3-f2-f1-f0
+	; Second byte:0b0- x -f9-f8-f7-f6-f5-f4
+	mov A,r1
+	and A,0x0F
+	or A,0x80	; channel 0
+	mov [SOUND_PORT],A
+	
+	mov r4,A
+	mov r5,0x01
+	push_pc+1
+	call print_hex
+	
+	mov A,r0	; 0b0-0-0-0-0-0-f9-f8
+	shl A
+	shl A
+	shl A
+	shl A 		; 0b0-0-f9-f8-0-0-0-0
+	mov B,A		; store in B
+	mov A,r1	; 0bf7-f6-f5-f4-f3-f2-f1-f0
+	shr A
+	shr A
+	shr A
+	shr A		; 0b0000f7-f6-f5-f4
+	or A,B	
+	mov [SOUND_PORT],A
+	
+	mov r4,A
+	mov r5,0x01
+	push_pc+1
+	call print_hex
+	
+	jmp execute_cmd.exit
+	
 execute_cmd.test_call:
 
 	push_pc+1		; ensures set PC to after call statement (3 bytes)
