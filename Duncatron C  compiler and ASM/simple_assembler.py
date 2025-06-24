@@ -15,10 +15,11 @@ class Assembler:
     EQU_SYMBOL = 263
 
     
-    def __init__(self,filename,memory,text=""):
+    def __init__(self,filename,memory,text="",loadPOS=0):
         self.lines = []
         self.memory = memory
         self.maxPOS = 0
+        self.startPOS = loadPOS
         self.instruction_str = CPUSimulator.define_instructions.instruction_str
         if filename!=None:
             self.read_and_clean_file(filename)
@@ -141,7 +142,7 @@ class Assembler:
         self.RETI_opcode = self.machinecode("RETI")[0]
         self.PUSHPC_opcode = self.machinecode("PUSH_PC+1")[0]
         
-        self.pointer = 0
+        self.pointer = self.startPOS
         for line_number,line in enumerate(self.lines):
             cleaned_line = self.clean_line(line)
             if cleaned_line==False:
@@ -191,6 +192,7 @@ class Assembler:
             self.was_PUSHPC = (opcode==self.PUSHPC_opcode)
             
             if opcode<256: # a normal instruction, write into memory
+                print(cleaned_line)
                 for byte in asm:
                     self.write_memory(self.pointer,byte)#self.memory[pointer]=byte
                     self.pointer+=1
@@ -220,6 +222,7 @@ class Assembler:
                         print("Could not process data byte/word '"+databyte+"' at line number:",line_number)
                         return False
                     elif status==1:
+                        print(cleaned_line)
                         for byte in int_bytelist:
                             self.write_memory(self.pointer,byte)
                             #print("Writing:",pointer,byte)
@@ -256,6 +259,7 @@ class Assembler:
             symbol_found=False
             
             if " " in cleaned_line:
+                print(cleaned_line)
                 opcode,p0 = cleaned_line.split(" ")
                 p1 = None
                 if "," in p0:
@@ -462,11 +466,15 @@ class Assembler:
     def trim_binary(self):
         # removes trailing zeros from file to allow defining variables in RAM easily
         last_data_pos = 0
+        first_data_pos = 0x10000
         for pos,byte in enumerate(self.memory):
             if byte!=0:
+                if first_data_pos>pos:
+                    first_data_pos=pos
                 last_data_pos = pos
-        print("Trimmed binary, last data pos = ", last_data_pos)
+        print("Trimmed binary: first data pos =",first_data_pos,"last data pos = ", last_data_pos)
 
+        self.startPOS = first_data_pos
         self.maxPOS = last_data_pos+1 # Add one in case the last byte is a zero-terminated string
 
     def burn_binary(self):
@@ -474,12 +482,12 @@ class Assembler:
         binfilename = self.asmfilename.split('.')[0]+".bin"
         print("Burning binary..."+binfilename+" size:"+str(size)+" bytes")
         f = open(binfilename,"wb")
-        f.write(self.memory[0:size])
+        f.write(self.memory[self.startPOS:size])
         f.close()
         print("Binary written")
 
     def burn_headerfile(self):
-        size = self.maxPOS+1
+        size = self.maxPOS+1-self.startPOS
         Hfilename = "BurnProgram.h" #self.asmfilename.split('.')[0]+".h"
         print("Burning header file..."+Hfilename+" size:"+str(size)+" bytes")
 
@@ -502,6 +510,7 @@ class Assembler:
         unique_ID = "0x{:08x}".format(time_seconds)
         f.write("uint32_t unique_ID = "+unique_ID+"; // Stored in EEPROM when burnt to avoid re-burning\n")
         f.write("uint16_t program_code_len = "+str(size)+"; // Size in bytes\n\n")
+        f.write("uint16_t program_start = "+hex(self.startPOS)+"; // Starting address in memory")
 
         f.write("const PROGMEM uint8_t BurnProgram[] = {")
         for b_num,b in enumerate(self.memory[0:size]):
@@ -522,7 +531,7 @@ if __name__=="__main__":
     filename="..\Building\\SystemOS.asm"
     #filename = "SystemOS.asm"
     #filename = "asm files\\super_simple_halt.asm"
-    
+    filename = "loadtest.asm"
     asm = Assembler(filename,memory,"")
     success = asm.assemble()
     if success:
