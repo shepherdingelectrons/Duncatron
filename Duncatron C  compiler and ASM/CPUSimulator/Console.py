@@ -14,16 +14,18 @@ class ConsoleEmulator:
 
         wincolour = (255,255,255)
         self.screen.fill(wincolour)
+
+        self.fcol_default = (0,0,0)
+        self.bcol_default = (255,255,255)
         
         self.fx = 0
         self.fy = 0
-        self.CharMatrix = [[0 for x in range(0,self.swidth)] for y in range(0,self.sheight)]
-        self.previousMatrix = [[0 for x in range(0,self.swidth)] for y in range(0,self.sheight)]
+        self.CharMatrix = [[(0, self.fcol_default, self.bcol_default) for x in range(0,self.swidth)] for y in range(0,self.sheight)]
+        self.previousMatrix = [[(0, self.fcol_default, self.bcol_default) for x in range(0,self.swidth)] for y in range(0,self.sheight)]
         self.quit = False
         self.Computer = None
         self.dropfile = None
         self.handleUART = True
-##        self.readQueue = []
         
     def connectCPU(self, Computer):
         self.Computer = Computer
@@ -46,9 +48,18 @@ class ConsoleEmulator:
             self.fy=self.sheight-1
             for row in range(0,self.sheight-1):
                 self.CharMatrix[row]=self.CharMatrix[row+1]
-            self.CharMatrix[self.sheight-1]= [0 for x in range(0,self.swidth)] # clear new final row
+            self.CharMatrix[self.sheight-1]= [(0,self.fcol_default,self.bcol_default) for x in range(0,self.swidth)] # clear new final row
 
-    def printToConsole(self,char):
+    def printConsoleString(self,string,suffix="\n\r"):
+        # Print to console and highlight with colour to show it is not output the computer
+        print(string,end=suffix)
+        string+=suffix
+        for char in string:
+            self.printToConsole(ord(char),((255,0,0),(255,255,255)))
+        
+                                
+    def printToConsole(self,char,colour=None):
+    
         if char==13:
             self.fx=0
             return
@@ -57,7 +68,7 @@ class ConsoleEmulator:
             return
 
         if char==127:
-            self.CharMatrix[self.fy][self.fx] = 0
+            self.CharMatrix[self.fy][self.fx] = (0,0,0)
             self.fx-=1
             if self.fx<0:
                 self.fx=0
@@ -73,19 +84,28 @@ class ConsoleEmulator:
             return
 
         self._printCharToConsole(char) # handles scrolling
-        self.CharMatrix[self.fy][self.fx]=char
+        if colour:
+            fg,bg=colour
+        else:
+            fg,bg=self.fcol_default,self.bcol_default
+        self.CharMatrix[self.fy][self.fx]=(char,fg,bg)
 
     def RenderConsoleMatrix(self):
-        fg = 0,0,0 #250, 240, 230
-        bg = 255,255,255#5, 5, 5
+        fg = self.fcol_default #0,0,0 #250, 240, 230
+        bg = self.bcol_default # 255,255,255#5, 5, 5
         w,h = self.font.size("A")
         
         for row in range(0,self.sheight):
             for col in range(0,self.swidth):
-                character = self.CharMatrix[row][col]
-                if character!=self.previousMatrix[row][col]:
-                    self.previousMatrix[row][col] = character
-                    if character==0: character=32 # Draw a space to blank our canvas
+                character,fg,bg = self.CharMatrix[row][col]
+                prev_char,_,_ = self.previousMatrix[row][col]
+                
+                if character!=prev_char:
+                    self.previousMatrix[row][col] = (character,fg,bg)
+                    if character==0:
+                        character=32 # Draw a space to blank our canvas
+                        fg = self.fcol_default
+                        bg = self.bcol_default
                     if character>31:
                         ren = self.font.render(chr(character), 0, fg, bg)
                         self.screen.blit(ren, (col*w, row*h))
