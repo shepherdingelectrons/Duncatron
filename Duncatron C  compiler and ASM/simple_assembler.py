@@ -217,9 +217,10 @@ class Assembler:
                     bytelist = [str(asm[1])]
                
                 for databyte in bytelist:
+                    #print(databyte,":",bytelist,cleaned_line,line_number)
                     int_bytelist,status = self.process_databyte(databyte.strip(),opcode)
                     if status==0:
-                        print("Could not process data byte/word '"+databyte+"' at line number:",line_number)
+                        print("Could not process data byte/word '"+databyte+"' at line number:",line_number,"Line:",cleaned_line)
                         return False
                     elif status==1:
                         print(cleaned_line)
@@ -305,6 +306,11 @@ class Assembler:
         return return_str
     
     def process_databyte(self, data_byte, data_type):
+
+        if data_byte=='':
+            print("ERROR: Data byte is NULL")
+            return (False,0)
+        
         # hex byte
         if data_type==self.DATABYTES:
             hex_regex = "^0x([0-9A-Fa-f]{2})$"
@@ -509,8 +515,8 @@ class Assembler:
         f.write("#define BURN_BINARY 1\n\n")
         unique_ID = "0x{:08x}".format(time_seconds)
         f.write("uint32_t unique_ID = "+unique_ID+"; // Stored in EEPROM when burnt to avoid re-burning\n")
-        f.write("uint16_t program_code_len = "+str(size)+"; // Size in bytes\n\n")
-        f.write("uint16_t program_start = "+hex(self.startPOS)+"; // Starting address in memory")
+        f.write("uint16_t program_code_len = "+str(size)+"; // Size in bytes\n")
+        f.write("uint16_t program_start = "+hex(self.startPOS)+"; // Starting address in memory\n\n")
 
         f.write("const PROGMEM uint8_t BurnProgram[] = {")
         for b_num,b in enumerate(self.memory[0:size]):
@@ -531,7 +537,6 @@ if __name__=="__main__":
     filename="..\Building\\SystemOS.asm"
     #filename = "SystemOS.asm"
     #filename = "asm files\\super_simple_halt.asm"
-    filename = "loadtest.asm"
     asm = Assembler(filename,memory,"")
     success = asm.assemble()
     if success:
