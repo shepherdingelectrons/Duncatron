@@ -127,8 +127,10 @@ class DuncatronInterface:
             self.myConsole.printConsoleString("Assembling code:")
             tempmemory = bytearray(0x10000)
             self.asm = simple_assembler.Assembler(self.filename,tempmemory,loadPOS=self.load_address)
-            success = self.asm.assemble(show_labels=True)
+            success = self.asm.assemble()
             if success:
+                for lab in self.asm.labels:
+                    self.myConsole.printConsoleString(lab+":"+hex(self.asm.labels[lab]))
                 self.asm.burn_binary()
                 self.myConsole.printConsoleString("Done")
                 self.filename = file+".bin"
