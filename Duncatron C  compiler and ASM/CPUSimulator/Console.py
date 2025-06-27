@@ -26,7 +26,36 @@ class ConsoleEmulator:
         self.Computer = None
         self.dropfile = None
         self.handleUART = True
-        
+
+        self.shift_map = {}
+        self.init_shift_map()
+
+    def init_shift_map(self):
+        self.shift_map['1'] = '!'
+        self.shift_map['2'] = '"'
+        self.shift_map['3'] = '£'
+        self.shift_map['4'] = '$'
+        self.shift_map['5'] = '%'
+        self.shift_map['6'] = '^'
+        self.shift_map['7'] = '&'
+        self.shift_map['8'] = '*'
+        self.shift_map['9'] = '('
+        self.shift_map['0'] = ')'
+        self.shift_map['-'] = '_'
+        self.shift_map['='] = '+'
+        self.shift_map['['] = '{'
+        self.shift_map[']'] = '}'
+        self.shift_map[';'] = ':'
+        self.shift_map["'"] = '@'
+        self.shift_map['#'] = '~'
+        self.shift_map['\\'] = '|'
+        self.shift_map[','] = '<'
+        self.shift_map['.'] = '>'
+        self.shift_map['/'] = '?'
+
+        for char in range(ord('a'),ord('z')):
+            self.shift_map[chr(char)] = chr(char - 32)
+      
     def connectCPU(self, Computer):
         self.Computer = Computer
         if self.Computer.console == None: # If console isn't connected, reciprocate
@@ -125,6 +154,13 @@ class ConsoleEmulator:
                         UART_RX = 10 # remap return/line feed character
                     if UART_RX == 8:
                         UART_RX = 127 # remap backspace to delete
+
+                    # Check SHIFT status
+                    if pygame.key.get_mods() & pygame.KMOD_SHIFT:
+                        print("shifting")
+                        shiftkey = chr(UART_RX)
+                        if shiftkey in self.shift_map:
+                            UART_RX = ord(self.shift_map[shiftkey])
                     
                     # Send key by virtual UART
                     if self.Computer!=None and self.handleUART:
