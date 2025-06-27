@@ -1,11 +1,16 @@
+; ******************************* Duncatron BIOS **************************************
 init:
 NES_PORT equ 0x8100
 SOUND_PORT equ 0x8101
+COMMAND_TABLE_LEN equ [0x0D]
 
 	mov r0r1,INTERUPT; setup interrupt jump vector
 	mov [0x00],r0	; Zero page 0x00
 	mov [0x01],r1	; Zero page 0x01
 
+	mov A,0x09		; COMMAND_TABLE_LEN
+	mov COMMAND_TABLE_LEN,A	; reset COMMAND_TABLE_LEN
+	
 	mov U,0x0A
 	mov U,0x0D
 
@@ -56,19 +61,14 @@ main_loop:
 	
 	jmp main_loop
 
-
 main.exit:
 	mov r0r1,goodbye_str
 	push_pc+1
 	call print_str
 	HALT
 	jmp init ; If restart after HALT without reseting PC
-
-; ###########################  Execute commands if matched #########################################
-; ##############  r4 returns 0xff (non-zero) to exit main(), else r4 = 0 (doing nothing for now)  ##
-
+		
 draw_logo:
-
 	mov r0r1,duncatron1_0	; Print a greeting message
 	push_pc+1
 	call print_str
@@ -84,24 +84,6 @@ draw_logo:
 	mov r0r1,duncatron1_4	; Print a greeting message
 	push_pc+1
 	call print_str
-	
-	pop T
-	RET
-		
-draw_logo_2:
-	mov r0r1,duncatron0	; Print a greeting message
-	push_pc+1
-	call print_str
-	mov r0r1,duncatron1	; Print a greeting message
-	push_pc+1
-	call print_str
-	mov r0r1,duncatron2	; Print a greeting message
-	push_pc+1
-	call print_str
-	mov r0r1,duncatron3	; Print a greeting message
-	push_pc+1
-	call print_str
-	
 	pop T
 	RET
 
@@ -117,14 +99,16 @@ sound_off:
 	pop T
 	ret
 
-COMMAND_TABLE_LEN equ 0x0C
+; ###########################  Execute commands if matched #########################################
+; ##############  r4 returns 0xff (non-zero) to exit main(), else r4 = 0 (doing nothing for now)  ##
+
 COMMAND_TABLE_LEN_MAX equ 0x10
 
 main_commands_table:
-dw reset_str, exit_str, prog_str, write_byte_str, read_byte_str
-dw hex_str, logo_str, logo_str2, call_str, help_str
-dw load_str, beep_str, 0x0000, 0x0000, 0x0000
-dw 0x0000 ; add empty slots
+dw hex_str, write_byte_str, read_byte_str, call_str
+dw load_str, beep_str, add_cmd_str, reset_str
+dw help_str, slot0_str, slot1_str, slot2_str ; add empty slots
+dw slot3_str, slot4_str, slot5_str, slot6_str ; add empty slots
 
 ; might be fun to add a command to add new command
 ; addcmd 0x#### *		; * is new nomenclature to be implemented that puts remainder of string into buffer (or saves position of * without further processing)
@@ -136,24 +120,27 @@ dw 0x0000 ; add empty slots
 ; will be useful to load new functions into RAM memory and then add as commands
  
 main_commands_jumptable:
-dw execute_cmd.run_reset, execute_cmd.run_exit, execute_cmd.prog, execute_cmd.write_byte, execute_cmd.read_byte
-dw execute_cmd.hex, execute_cmd.draw_logo, execute_cmd.draw_logo_2, execute_cmd.call,  execute_cmd.help
-dw execute_cmd.load, execute_cmd.beep, 0x0000, 0x0000, 0x0000
-dw 0x0000 ; add empty slots
+dw execute_cmd.hex, execute_cmd.write_byte, execute_cmd.read_byte, execute_cmd.call
+dw execute_cmd.load, execute_cmd.beep, execute_cmd.add_cmd, execute_cmd.run_reset
+dw execute_cmd.help,0x0000, 0x0000,0x0000 ; add empty slots
+dw 0x0000,0x0000,0x0000,0x0000 ; add empty slots
 
-reset_str: dstr 'reset'
-exit_str: dstr 'exit'
-prog_str: dstr 'prog'
+hex_str: dstr 'hex 0x#### 0x##'
 write_byte_str: dstr 'w 0x#### 0x##'
 read_byte_str: dstr 'r 0x####'
-hex_str: dstr 'hex 0x#### 0x##'
-logo_str: dstr 'logo'
-logo_str2: dstr 'logo2'
 call_str: dstr 'call 0x####'
 load_str: dstr 'load 0x####'
 beep_str: dstr 'beep 0x####'
-
+add_cmd_str: dstr 'addcmd 0x#### *'	; * is a wildcard that saves the rest of the string
+reset_str: dstr 'reset'
 help_str: dstr 'help'
+slot0_str: db [17] ; 16 characters + 1 zero
+slot1_str: db [17] ; 16 characters + 1 zero
+slot2_str: db [17] ; 16 characters + 1 zero
+slot3_str: db [17] ; 16 characters + 1 zero
+slot4_str: db [17] ; 16 characters + 1 zero
+slot5_str: db [17] ; 16 characters + 1 zero
+slot6_str: db [17] ; 16 characters + 1 zero
 
 execute_cmd:
 	mov r2r3,main_commands_table ; pointer to command table, contains list of pointers
@@ -185,8 +172,9 @@ execute_cmd.checkcmds_loop:
 
 	inc r4	; Next pointer position
 	mov A,r4	; instruction not needed?
-
-	cmp A,COMMAND_TABLE_LEN ; finished all main commands?
+	
+	mov B,COMMAND_TABLE_LEN
+	cmp A,B ; finished all main commands?
 	jnz execute_cmd.checkcmds_loop
 	; If we got here then we didn't find any matches...
 
@@ -216,31 +204,28 @@ execute_cmd.success: ; use r4 as an index for a jump table
 	mov r0,A 	; r0r1 is now the pointer to the desired jump label
 
 	mov A,[r0r1]	; HIGH byte of desired jump label
-	push A
+	mov r4,A
 	inc r0r1
 	mov A,[r0r1]	; LOW byte of desired jump label
-	push A
-	pop PC ; jmp!
-
-execute_cmd.run_exit:
-	mov r4,0xff
-	pop T
-	ret
+	mov r5,A
+	
+	mov A,r4
+	and A,0x80		; is address in RAM?
+	jz success.jmp
+	; Not in RAM, so a BIOS ROM function - not perfect assumption but does for now
+	
+	push_pc+1	; if a CALL then push return address
+	
+	success.jmp:
+	push r4
+	push r5
+	pop PC ; jmp/call!
+	jmp execute_cmd.exit ; CALLs will return here so take care of its
 
 execute_cmd.run_reset: ; 'reset' command found
 	mov r4,0xfe		; r4=0xFE is the return code for reset
 	pop T
 	ret
-
-execute_cmd.prog:
-	push_pc+1
-	call program_mode
-	; would return here from program_mode if called
-	mov r0r1,ready	; Print a greeting message
-	push_pc+1
-	call print_str
-	
-	jmp execute_cmd.exit
 
 execute_cmd.write_byte:
 	; Convert string to 16-bit hex address, convert write-byte string to 8-bit value
@@ -396,16 +381,6 @@ execute_cmd.hex:
 	hex.leave:	
 	mov U,0x0A
 	mov U,0x0D
-	jmp execute_cmd.exit
-
-execute_cmd.draw_logo:
-	push_pc+1
-	call draw_logo
-	jmp execute_cmd.exit
-	
-execute_cmd.draw_logo_2:
-	push_pc+1
-	call draw_logo_2	
 	jmp execute_cmd.exit
 
 execute_cmd.call:
@@ -595,12 +570,88 @@ execute_cmd.beep:
 	push_pc+1
 	call print_hex
 	
+	mov A,0x90			; Attenuation byte, channel 0 
+	mov [SOUND_PORT],A
+	
+	jmp execute_cmd.exit
+
+add_cmd_full_str: dstr 'Command slots full!'
+execute_cmd.add_cmd:
+	mov r0r1,main_commands_jumptable
+	
+	mov A,COMMAND_TABLE_LEN
+	cmp A,COMMAND_TABLE_LEN_MAX
+	jge execute_cmd.add_cmd_full
+	
+	shl A	; index *2
+	add A,r1
+	mov r1,A
+	mov A,r0
+	addc A,0x00
+	mov r0,A	;r0r1 = r0r1 + 2*index
+	; Now we have the index into the address table
+	
+	; Get call address and add it to the call address jump table
+	mov r4,[0x02]	; high hex nibble in ascii, 0-9/a-f/A-F
+	mov r5,[0x03]	; low hex nibble in ascii
+	push_pc+1
+	call ascii_hex_to_byte
+	mov A,r5
+	mov [r0r1],A		; HIGH of call address
+	inc r0r1
+	
+	mov r4,[0x04]	; high hex nibble in ascii, 0-9/a-f/A-F
+	mov r5,[0x05]	; low hex nibble in ascii
+	push_pc+1
+	call ascii_hex_to_byte
+	mov A,r5
+	mov [r0r1],A		; LOW of call address
+	
+	mov r4r5,main_commands_table ; This contains addresses of strings
+	mov A,COMMAND_TABLE_LEN
+	shl A
+	add A,r5
+	mov r5,A
+	mov A,r4
+	addc A,0x00
+	mov r4,A		; r2r3 = main_commands_table + 2*A = address of slot_n_str
+	
+	mov A,[r4r5]
+	mov r2,A
+	inc r4r5
+	mov A,[r4r5]
+	mov r3,A
+	
+	mov r0,[0x0E]	; source string in r0r1
+	mov r1,[0x0F]
+	
+	copy_string: ; from r0r1 to r2r3 until zero character
+	mov A,[r0r1]
+	mov [r2r3],A
+	mov U,A
+	cmp A,0x00
+	jz copy_string.exit
+	inc r0r1
+	inc r2r3
+	jmp copy_string
+	copy_string.exit:
+	
+	mov A,COMMAND_TABLE_LEN	; Increment number of commands in table
+	inc A
+	mov COMMAND_TABLE_LEN,A
+	
 	jmp execute_cmd.exit
 	
-execute_cmd.test_call:
+	execute_cmd.add_cmd_full:
+	mov r0r1, add_cmd_full_str
+	push_pc+1
+	call print_str
+	jmp execute_cmd.exit
 
-	push_pc+1		; ensures set PC to after call statement (3 bytes)
-	call draw_logo_2	; 0x@@ 0x@@@@
+;execute_cmd.test_call:
+
+	;push_pc+1		; ensures set PC to after call statement (3 bytes)
+	;call draw_logo_2	; 0x@@ 0x@@@@
 	
 	;  This code means it is possible to CALL any given memory address and return correctly. 
 	;  Alternatively, if the push_pc+1 is omitted, one can JMP to any given memory location
@@ -609,12 +660,12 @@ execute_cmd.test_call:
 	; call 0x8234
 	; could add functionality to load any given program (over UART) into a certain memory address and then run it
 	
-	mov r0r1,draw_logo
-	push_pc+1	; push return address (3 bytes from here)
-	push r0		; byte 1
-	push r1		; byte 2
-	pop PC		; load r0r1 into PC - byte 3
-	jmp execute_cmd.exit
+	;mov r0r1,draw_logo
+	;push_pc+1	; push return address (3 bytes from here)
+	;push r0		; byte 1
+	;push r1		; byte 2
+	;pop PC		; load r0r1 into PC - byte 3
+	;jmp execute_cmd.exit
 
 execute_cmd.help:
 	mov r4,COMMAND_TABLE_LEN
@@ -639,11 +690,6 @@ execute_cmd.help:
 		
 	jmp execute_cmd.exit
 	
-execute_cmd.next3:
-; ... other programs here
-	jmp execute_cmd.exit
-
-
 ; ########### Interupt vector ##################
 INTERUPT:
 mov r0r1,interupt_text
@@ -795,7 +841,8 @@ print_hex.exit:
 	POP T
 	RET
 
-;####  General helper function cmp_str_special to compare two strings and save the special character # in the zero page
+;####  General helper function cmp_str_special to compare two strings and save the special character # in the zero page.
+;####	'*' means to save the rest of the string (points r0r1 to *)
 ;####  Inputs:
 ;####  r0r1 pointer to zero-terminated string1 (might contain wild-card character #, which is stored at [r5++])
 ;####  r2r3 pointer to zero-terminated string2
@@ -815,6 +862,8 @@ cmp_str_special.start:
 	mov A,[r0r1]
 	cmp A,0x23 ; #
 	jz cmp_str_special.wildcard
+	cmp A,0x2A ; *
+	jz cmp_str_special.asterisk
 	
 	mov B,A
 	mov A,[r2r3] 
@@ -839,6 +888,9 @@ cmp_str_special.wildcard:
 	
 cmp_str_special.false:
 	mov r5,0x00
+cmp_str_special.asterisk:
+	mov [0x0E],r2
+	mov [0x0F],r3
 cmp_str_special.exit:
 	pop r4	
 	pop T
@@ -882,402 +934,30 @@ ascii_hex_to_byte:
 	pop T
 	ret 
 	
-;### Programming mode
-program_mode:
-	mov r2,0x0E	; 0x0E = 14 lines
-	mov r0r1, program_mode_str
-program_mode.display_text:
-	push_pc+1
-	call print_str	; Line 1-14
-	inc r0r1
-	dec r2
-	jnz program_mode.display_text
 
-	mov r2r3,input_str ; setup new input string
-	mov r4,0x00
-	mov U,0x3F; ":" ;0x3E ; ">"
-
-; ################ programming main() ####################
-program_mode.loop:
-	push_pc+1
-	call handle_input	; returns r5=0 if no string, else r5=1
-	mov A,r5
-	cmp A,0x01
-	jz program_mode.loop.process	; we got a match
-	jmp program_mode.loop
-
-program_mode.loop.process:
-	push_pc+1
-	call program_mode.process_str ; process the commands in some way
-	mov A,r4			; look at output, if r4!=0 then exit
-	cmp A,0x00
-	jz program_mode.loop
-	; else if we got here, exit program_mode back to main
-	pop T
-	ret
-	
-program_mode.process_str:
-;	Get address of command string using r4 as an index
-	mov r4,0x00 ; command index = 0 initially
-
-program_mode.process_loop:
-	mov r2r3, program_cmd_table ; use r2r3 temporarily 
-	mov A,r4
-	shl A	;A = index * 2
-	add A,r3
-	mov r3,A
-	mov A,r2
-	addc A,0x00
-	mov r2,A	; r2r3 = program_cmd_table + 2*r4
-	
-	; need to get address at r2r3 into r0r1:
-	mov A,[r2r3]	; HIGH
-	mov r0,A
-	inc r2r3
-	mov A,[r2r3]	; LOW
-	mov r1,A
-	
-	; r0r1 now holds the actual address that was pointed to by r2r3
-	
-	mov r2r3,input_str	; reset input string pointer
-	mov r5,0x02			; set zeropage memory address for wildcard characters
-	push_pc+1			
-	call cmp_str_special	
-	mov A,r5
-	cmp A,0x00
-	jnz program_mode.success ; r5 !=0  means command recognised
-
-	mov A,r4	; loop counter
-	inc A
-	mov r4,A
-
-	cmp A,0x0D ; 13 commands
-	jnz program_mode.process_loop
-	; if we got here then went through all strings and didn't match
-	mov r0r1,error_str
-	push_pc+1
-	call print_str
-	jmp program_mode.reset_prompt
-
-program_mode.success:	; Use r4 as an index for a jump table
-	mov r0r1,program_mode.jump_table
-	mov A,r4 ; index into jump table
-	shl A
-	add A,r1 ; add r0r1+A --> A is jump table index
-	mov r1,A
-	mov A,r0
-	addc A,0x00
-	mov r0,A 	; r0r1 is now the pointer to the desired jump label
-
-	mov A,[r0r1]	; HIGH byte of desired jump label
-	push A
-	inc r0r1
-	mov A,[r0r1]	; LOW byte of desired jump label
-	push A
-	pop PC ; jmp!
-	
-; old code below, set_high, writebyte, set_low
-
-program_mode.set_high:
-	mov A,[0x02]
-	mov [0x0A],A
-	jmp program_mode.reset_prompt
-	
-program_mode.set_low:
-	mov A,[0x02]
-	mov [0x0B],A
-	jmp program_mode.reset_prompt
-	
-program_mode.writebyte:
-	mov r0,[0x0A]
-	mov r1,[0x0B]
-	mov A,[0x02]
-	mov [r0r1],A
-	jmp program_mode.reset_prompt
-
-; current address is at zero page 0x03 (hi) and 0x04 (low)
-program_mode.set_n:	;sets number of bytes for serial read and write operations
-	mov r4,[0x02]	; high hex nibble in ascii, 0-9/a-f/A-F
-	mov r5,[0x03]	; low hex nibble in ascii
-	push_pc+1
-	call ascii_hex_to_byte
-	mov [0x0C],r5	; store number of bytes in 0x0C on zeropage
-	jmp program_mode.reset_prompt
-	
-program_mode.writestream:
-	; we now setup a loop which waits for n+1 characters on the UART RX stream
-	; we echo each one back so that the sending knows we have received and okay to send another
-	mov r5,[0x0C]	; number pf bytes (0-255)--> 1-256 bytes
-	mov r0,[0x0A]	; high byte of address
-	mov r1,[0x0B]	; low byte of address
-
-; Consider adding, auto address incrementing and read command as: r 0x##
-program_mode.writestream.loop:
-		mov A,F	;128 64 32 16 8  4   2  1
-				;F7  F6 SD RDY OF N  C  Z
-		and A,0x10 ; RX character is waiting
-		jz program_mode.writestream.loop
-		
-		mov A,U		; get RX character from UART
-		mov U,A		; send back (assume not sending, don't check for now...)
-		
-		; Do something with the character, write it somewhere I guess
-		mov [r0r1],A
-		
-		mov A,r5	; check loop counter
-		cmp A,0x00
-		jz program_mode.reset_promptNL ; if zero, A-0 = 0, then bail out
-		
-		dec r5	; by doing decrement after compare, 0 is mapped to 1 byte and 255 is mapped to 256 bytes
-		inc r0r1
-		
-		jmp program_mode.writestream.loop
-
-program_mode.readstream:
-	mov r5,[0x0C]	; number pf bytes (0-255)--> 1-256 bytes
-	mov r0,[0x0A]	; high byte of address
-	mov r1,[0x0B]	; low byte of address
-		
-program_mode.readstream.loop:
-	mov A,F	;128 64 32 16 8  4   2  1
-				;F7  F6 SD RDY OF N  C  Z
-	and A,0x20 ; TX character is still sending, wait...
-	jnz program_mode.readstream.loop
-	
-	mov A,[r0r1]
-	mov U,A		; send char at memory address
-	
-	mov A,r5	; check loop counter
-	cmp A,0x00
-	jz program_mode.reset_promptNL ; if zero, A-0 = 0, then bail out
-		
-	dec r5	; by doing decrement after compare, 0 is mapped to 1 byte and 255 is mapped to 256 bytes
-	inc r0r1
-	
-	jmp program_mode.readstream.loop
-
-program_mode.set_highHEX:
-	mov r4,[0x02]	; high hex nibble in ascii, 0-9/a-f/A-F
-	mov r5,[0x03]	; low hex nibble in ascii
-	push_pc+1
-	call ascii_hex_to_byte
-	mov [0x0A],r5
-	jmp program_mode.reset_prompt
-
-program_mode.set_lowHEX:
-	mov r4,[0x02]	; high hex nibble in ascii 0-9/a-f/A-F
-	mov r5,[0x03]	; low hex nibble in ascii
-	push_pc+1
-	call ascii_hex_to_byte
-	mov [0x0B],r5
-	jmp program_mode.reset_prompt
-	
-program_mode.addr:
-	mov r5,0x01	; print 0x in print_hex
-	mov r4,[0x0A]	; Display interrupt vector address
-	push_pc+1
-	call print_hex
-	mov r5,0x00	; don't print 0x in print_hex
-	mov r4,[0x0B]	; Display interrupt vector address
-	push_pc+1
-	call print_hex
-	jmp program_mode.reset_promptNL
-
-program_mode.readbyte:
-	mov r0,[0x0A]
-	mov r1,[0x0B]
-	mov A,[r0r1]
-	mov r5,0x01
-	mov r4,A
-	push_pc+1
-	call print_hex
-	jmp program_mode.reset_promptNL
-
-program_mode.writebyteHEX:
-	mov r4,[0x02]	; high hex nibble in ascii, 0-9 and A-F (caps)
-	mov r5,[0x03]	; low hex nibble in ascii
-	push_pc+1
-	call ascii_hex_to_byte
-	mov A,r5	; assembled byte 
-	mov r0,[0x0A]
-	mov r1,[0x0B]
-	mov [r0r1],A	; write r5 into addressed specified in 0x0A-0x0B
-	jmp program_mode.reset_prompt
-program_mode.inc:
-	mov r0,[0x0A]
-	mov r1,[0x0B]
-	inc r0r1
-	mov [0x0A],r0
-	mov [0x0B],r1
-	jmp program_mode.reset_prompt
-program_mode.dec:
-	mov A,[0x0B]
-	dec A
-	mov [0x0B],A
-	mov A,[0x0A]
-	subc A,0x00
-	mov [0x0A],A
-	jmp program_mode.reset_prompt
-program_mode.jump:
-	mov A,[0x0A]	; HIGH byte of desired jump label
-	push A
-	inc r0r1
-	mov A,[0x0B]	; LOW byte of desired jump label
-	push A
-	pop PC ; jmp!
-	jmp program_mode.reset_prompt
-program_mode.eoc:
-	mov r0r1,END_OF_CODE
-	mov r5,0x01	; print 0x in print_hex
-	mov r4,r0	; Display interrupt vector address
-	push_pc+1
-	call print_hex
-	mov r5,0x00	; don't print 0x in print_hex
-	mov r4,r1	; Display interrupt vector address
-	push_pc+1
-	call print_hex
-	jmp program_mode.reset_promptNL
-
-program_mode.leave:
-	mov r4,0xff	; use r4 as a return register, signals to exit to main
-	pop T
-	ret
-
-program_mode.reset_promptNL:
-	mov U,0x0A	; newline
-	mov U,0x0D	; carriage-return
-
-program_mode.reset_prompt:
-	mov r2r3,input_str ; setup new input string
-
-	mov r4,0x00	
-	mov U,0x3F; ":" ;0x3E ; ">"
-	pop T
-	ret
-
-program_mode.jump_table:
-dw program_mode.set_highHEX, program_mode.set_lowHEX, program_mode.addr
-dw program_mode.readbyte,program_mode.writebyteHEX,program_mode.inc,program_mode.dec
-dw program_mode.jump,program_mode.set_n,program_mode.writestream,program_mode.readstream
-dw program_mode.eoc,program_mode.leave 
-
-;Zero page structure:
-; 0x00-0x01 RESERVED INT VECTOR
-; 0x02-0x09 8 bytes for special str cmp
-; 0x0A-0x0B programming current address (0x0A = High, 0x0B = Low byte)
-; 0x0C		number of bytes for serial writing and reading
-
-; data labels don't have to be page-aligned
 welcome: dstr 'Welcome to Duncatron v1.0 - type "help" for commands'
 ready: dstr 'READY'
 NES_found: dstr 'NES controller found!'
-helloworld: dstr 'Hello world @=)'
 interupt_text: dstr 'Interupt called!'
 goodbye_str: dstr 'Bye!'
 error_str: dstr 'ERROR'
 
-program_mode_str: ; Humans can input bytes using hex 0x##, computers by sending byte directly ie: #
-dstr 'Entering PROGRAMMING mode. Commands:' ; this comment gets ignored
-dstr '			h 0x##	; set high address to 0x## (#=byte)'
-dstr '			l 0x##	; set low address to 0x##'
-dstr '			a		; display current address'
-dstr '			r		; read the byte at current address'
-dstr '			w 0x##	; write the byte 0x## at current address'
-dstr '			+		; increment address +1'
-dstr '			-		; decrement address -1'
-dstr '			j		; jump to current address'
-dstr '			n 0x##	; set num bytes (0-255) for serial w/r'
-dstr '			ws		; write serial stream (writes n+1) bytes'
-dstr '			rs		; read serial stream (reads n+1) bytes'
-dstr '			eoc		; display end of code address'
-dstr '			x		; leave programming mode'
-
-; old strings:
-dstr '			h#  	; set high address to # (#=byte)'
-dstr '			l#		; set low address to # (#=byte)'
-dstr '			w#  	; write the byte # at current address'
-
 ; Logo generated here: https://patorjk.com/software/taag/#p=testall&f=Bulbhead&t=Duncatron%20
-duncatron0: dstr ' ____  __  __  _  _  ___    __   ____  ____  _____  _  _'  
-duncatron1: dstr '(  _ \(  )(  )( \( )/ __)  /__\ (_  _)(  _ \(  _  )( \( )'
-duncatron2: dstr ' )(_) ))(__)(  )  (( (__  /(__)\  )(   )   / )(_)(  )  ('
-duncatron3: dstr '(____/(______)(_)\_)\___)(__)(__)(__) (_)\_)(_____)(_)\_)' 
-
 duncatron1_0: dstr '    ____                         __'                 
 duncatron1_1: dstr '   / __ \__  ______  _________ _/ /__________  ____'     
 duncatron1_2: dstr '  / / / / / / / __ \/ ___/ __ `/ __/ ___/ __ \/ __ \'     
 duncatron1_3: dstr ' / /_/ / /_/ / / / / /__/ /_/ / /_/ /  / /_/ / / / /'     
 duncatron1_4: dstr '/_____/\__,_/_/ /_/\___/\__,_/\__/_/   \____/_/ /_/' 
 
-; Tidy up commands, remove h# and l#
-; Tidy up EOL (13,10 = 0x0D,0x0A) behaviour to make automated access easier
-; add 'ws 0x##' and 'rs 0x##' = write serial and read serial, 
-; where '0x##' is the number of characters to write/read in a following serial stream
-
-program_cmd_table:
-dw cmd0,cmd1,cmd2,cmd3,cmd4,cmd5,cmd6,cmd7,cmd8,cmd9,cmdA,cmdB,cmdC
-cmd0: dstr 'h 0x##'
-cmd1: dstr 'l 0x##'
-cmd2: dstr 'a'
-cmd3: dstr 'r'
-cmd4: dstr 'w 0x##'
-cmd5: dstr '+'
-cmd6: dstr '-'
-cmd7: dstr 'j'
-cmd8: dstr 'n 0x##'
-cmd9: dstr 'ws'
-cmdA: dstr 'rs'
-cmdB: dstr 'eoc'
-cmdC: dstr 'x'
-jumpstring:
-dstr 'Jumped!'
-;dstr 'h#|l#|r|w#|i||d|j
-END_OF_CODE: ; Label useful so we know where we can safely start programming
-push_pc+1
-int
-mov U,0x40 ; '@'
-halt
+;Zero page structure:
+; 0x00-0x01 RESERVED INT VECTOR
+; 0x02-0x09 8 bytes for special str cmp
+; 0x0A-0x0B programming current address (0x0A = High, 0x0B = Low byte)
+; 0x0C		number of bytes for serial writing and reading
+; 0x0D 		- CMD_TABLE_LENGTH
+; 0x0E		- High byte of pointer to '*' position in string
+; 0x0F 		- Low byte of pointer to '*' position in string
+; data labels don't have to be page-aligned
 
 0x8200:
 input_str: db [129]; Need to have some kind of array notation for making fixed sizes, i.e. db [129]
-
-;0x4161: ;0x41 =A, 0x61 =a
-;	mov r0r1,jumpstring
-;	push_pc+1
-;	call print_str
-;	jmp program_mode.reset_prompt
-
-; can have a command, i.e. "eoc" that produces:
-; > eoc
-; print_eoc:
-; mov r0r1,END_OF_CODE
-; mov r5,0x01	; print 0x in print_hex
-; mov r4,r0	; Display interrupt vector address
-; push_pc+1
-; call print_hex
-; mov r5,0x00	; don't print 0x in print_hex
-; mov r4,r1	; Display interrupt vector address
-; push_pc+1
-; call print_hex
-
-; Consider adding some support for constants, can use as variables in 16-bit memory and 8-bit zero-page addresses.
-; (1) Add assignment and typing by 8 or 16-bit
-; (2) Add regex for zeropage addressing and using labels rather than 0x@@ constants
-; i.e.:
-; ZEROPAGE 		= 0x8000 ; for example
-; constant16	= 0x1234
-; RESERVED 		= 0x00 	; for interrupt vector
-; loop_index 	= 0x02 ; one byte
-; my_var1 		= 0x03 ; two bytes
-; my_var2		= 0x05 ; two bytes
-; test0			= 0x07 ; one byte
-
-; then can have:
-; mov A, [loop_index]
-; inc A
-; mov [loop_index],A
-; 
-; or:
-; mov r0r1,constant16
-; jmp ZEROPAGE
-
