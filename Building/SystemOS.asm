@@ -4,11 +4,14 @@ NES_PORT equ 0x8100
 SOUND_PORT equ 0x8101
 COMMAND_TABLE_LEN equ [0x0D]
 
+SOUND_RESOLUTION equ 0x02	; increase this to down down the music playrate and vice versa
+CHANNEL_BIT_MASK equ [0x10]	; temp value for passing to function
+
 	mov r0r1,INTERUPT; setup interrupt jump vector
 	mov [0x00],r0	; Zero page 0x00
 	mov [0x01],r1	; Zero page 0x01
 
-	mov A,0x09		; COMMAND_TABLE_LEN
+	mov A,0x0A		; COMMAND_TABLE_LEN
 	mov COMMAND_TABLE_LEN,A	; reset COMMAND_TABLE_LEN
 	
 	mov U,0x0A
@@ -52,10 +55,14 @@ no_nes:
 ; ################ main() ####################
 main_loop:
 	push_pc+1
+	call MIDI_monitor
+	
+	push_pc+1
 	call handle_input	; returns r5=0 if no string, else r5=1
 	mov A,r5
 	cmp A,0x01
 	jnz main_loop
+	
 	; If r5==1 then an input is available
 	push_pc+1
 	call execute_cmd ; Try and execute command
@@ -102,6 +109,30 @@ sound_off:
 	mov [SOUND_PORT],A
 	mov A,0xFF
 	mov [SOUND_PORT],A
+	
+;	midi_channel_data:
+; 0x13 		- channel 0 bitmask - needs to be set in INIT (sound off)
+; 0x16		- channel 1 bitmask - needs to be set in INIT (sound off)
+; 0x19		- channel 2 bitmask - needs to be set in INIT (sound off)
+; 0x1C		- channel 3 bitmask - needs to be set in INIT (sound off)
+
+	mov A,0x00
+	mov [0x13],A
+	mov A,0x20
+	mov [0x16],A
+	shl A
+	mov [0x19],A
+	mov A,0x60
+	mov [0x1C],A
+	
+; Make sure all notes durations are off in channel table
+	
+	mov A,0x00
+	mov [0x11],A
+	mov [0x14],A
+	mov [0x17],A
+	mov [0x1A],A
+	
 	pop T
 	ret
 	
@@ -129,15 +160,26 @@ tune:
 	RET
 	
 playbeep:
-	; r0r1 contains 10-bit number
+	; r0r1 contains 10-bit number;
+	; CHANNEL_BIT_MASK contains bit mask for channel
+	
 	
 	; First byte: 0b1-ch1-ch0-0-f3-f2-f1-f0
 	; Second byte:0b0- x -f9-f8-f7-f6-f5-f4
+	
 	mov A,r1
 	and A,0x0F
-	or A,0x80	; channel 0
+	or A, 0x80
+	mov B,CHANNEL_BIT_MASK
+	or A,B	; channel select
 	mov [SOUND_PORT],A
 	
+	;mov r4,A
+	;mov r5,0x01
+	;push_pc+1
+	;call print_hex
+	;mov U,0x0A
+	;mov U,0x0D
 	
 	mov A,r0	; 0b0-0-0-0-0-0-f9-f8
 	shl A
@@ -153,8 +195,24 @@ playbeep:
 	or A,B	
 	mov [SOUND_PORT],A
 	
-	mov A,0x90			; Attenuation byte, channel 0 
+	;mov r4,A
+	;mov r5,0x01
+	;push_pc+1
+	;call print_hex
+	;mov U,0x0A
+	;mov U,0x0D
+	
+	mov A,0x90			; Attenuation byte, channel 0
+	mov B,CHANNEL_BIT_MASK
+	or A,B	
 	mov [SOUND_PORT],A
+	
+	;mov r4,A
+	;mov r5,0x01
+	;push_pc+1
+	;call print_hex
+	;mov U,0x0A
+	;mov U,0x0D
 
 	pop T
 	ret
@@ -167,7 +225,7 @@ COMMAND_TABLE_LEN_MAX equ 0x10
 main_commands_table:
 dw hex_str, write_byte_str, read_byte_str, call_str
 dw load_str, beep_str, add_cmd_str, reset_str
-dw help_str, slot0_str, slot1_str, slot2_str ; add empty slots
+dw help_str, midi_str, slot1_str, slot2_str ; add empty slots
 dw slot3_str, slot4_str, slot5_str, slot6_str ; add empty slots
 
 ; might be fun to add a command to add new command
@@ -182,7 +240,7 @@ dw slot3_str, slot4_str, slot5_str, slot6_str ; add empty slots
 main_commands_jumptable:
 dw execute_cmd.hex, execute_cmd.write_byte, execute_cmd.read_byte, execute_cmd.call
 dw execute_cmd.load, execute_cmd.beep, execute_cmd.add_cmd, execute_cmd.run_reset
-dw execute_cmd.help,0x0000, 0x0000,0x0000 ; add empty slots
+dw execute_cmd.help, execute_cmd.midi, 0x0000,0x0000 ; add empty slots
 dw 0x0000,0x0000,0x0000,0x0000 ; add empty slots
 
 hex_str: dstr 'hex 0x#### 0x##'
@@ -194,7 +252,9 @@ beep_str: dstr 'beep 0x####'
 add_cmd_str: dstr 'addcmd 0x#### *'	; * is a wildcard that saves the rest of the string
 reset_str: dstr 'reset'
 help_str: dstr 'help'
-slot0_str: db [17] ; 16 characters + 1 zero
+midi_str: dstr 'midi 0x## 0x## 0x##' ; MIDI note, duration and channel
+
+;slot0_str: db [17] ; 16 characters + 1 zero
 slot1_str: db [17] ; 16 characters + 1 zero
 slot2_str: db [17] ; 16 characters + 1 zero
 slot3_str: db [17] ; 16 characters + 1 zero
@@ -696,6 +756,179 @@ execute_cmd.add_cmd:
 	;pop PC		; load r0r1 into PC - byte 3
 	;jmp execute_cmd.exit
 
+MIDI_notes:
+; Calculated for SN76489 frequency = 2457600.0 Hz
+dw 0x03ff,0x03ff,0x03ff,0x03ff,0x03ff,0x03ff,0x03ff,0x03ff
+dw 0x03ff,0x03ff,0x03ff,0x03ff,0x03ff,0x03ff,0x03ff,0x03ff
+dw 0x03ff,0x03ff,0x03ff,0x03ff,0x03ff,0x03ff,0x03ff,0x03ff
+dw 0x03ff,0x03ff,0x03ff,0x03ff,0x03ff,0x03ff,0x03ff,0x03ff
+dw 0x03ff,0x03ff,0x03ff,0x03ff,0x03ff,0x03ff,0x03db,0x03a4
+dw 0x0370,0x033e,0x0310,0x02e4,0x02ba,0x0293,0x026e,0x024b
+dw 0x022a,0x020b,0x01ee,0x01d2,0x01b8,0x019f,0x0188,0x0172
+dw 0x015d,0x0149,0x0137,0x0126,0x0115,0x0106,0x00f7,0x00e9
+dw 0x00dc,0x00d0,0x00c4,0x00b9,0x00af,0x00a5,0x009c,0x0093
+dw 0x008b,0x0083,0x007b,0x0074,0x006e,0x0068,0x0062,0x005c
+dw 0x0057,0x0052,0x004e,0x0049,0x0045,0x0041,0x003e,0x003a
+dw 0x0037,0x0034,0x0031,0x002e,0x002c,0x0029,0x0027,0x0025
+dw 0x0023,0x0021,0x001f,0x001d,0x001b,0x001a,0x0018,0x0017
+dw 0x0016,0x0015,0x0013,0x0012,0x0011,0x0010,0x000f,0x000f
+dw 0x000e,0x000d,0x000c,0x000c,0x000b,0x000a,0x000a,0x0009
+dw 0x0009,0x0008,0x0008,0x0007,0x0007,0x0006,0x0006
+
+execute_cmd.midi: ; midi 0x##
+	mov r4,[0x02]	; high hex nibble in ascii, 0-9/a-f/A-F
+	mov r5,[0x03]	; low hex nibble in ascii
+	push_pc+1
+	call ascii_hex_to_byte
+	mov r0,r5		; r0 contains MIDI note value
+	
+	mov r4,[0x04]	; high hex nibble in ascii, 0-9/a-f/A-F
+	mov r5,[0x05]	; low hex nibble in ascii
+	push_pc+1
+	call ascii_hex_to_byte
+	mov r1,r5		; r1 contains note duration
+	
+	mov r4,[0x06]	; high hex nibble in ascii, 0-9/a-f/A-F
+	mov r5,[0x07]	; low hex nibble in ascii
+	push_pc+1
+	call ascii_hex_to_byte
+	
+	
+	; Ideally this should be wrapped in another function so we can call programatically later
+	; r5 holds channel 0-3
+	mov A,r5
+	shl A
+	add A,r5 ; A = r5*2 + r5 = 3*r5
+	mov r4r5,midi_channel_data
+	add A,r5	; table is in zeropage and small, so won't overflow 
+	mov r5,A	; r4r5 now holds position in midi_channel_data for duration and timer value
+	
+	mov A,r1	; add duration to correct entry in channel table
+	mov [r4r5],A
+	inc r4r5
+	
+	mov A,SOUND_RESOLUTION	; reset channel n timer
+	mov [r4r5],A
+	inc r4r5
+	
+	mov A,[r4r5]	; channel 0 = 0x00, channel 1 = 0x20, channel 2 = 0x40, channel 3 = 0x60
+	mov CHANNEL_BIT_MASK,A 
+	
+	push_pc+1
+	call playMIDI
+	jmp execute_cmd.exit
+
+MIDI_monitor:
+	push r0
+	push r1
+	push r2
+	
+	mov r0r1, midi_channel_data
+	mov r2,0x00
+	
+	MIDI_monitor_loop:
+	; Algorithm if DURATION is not zero then :
+	;		(1) decrement timer
+	;		(2) decrement duration
+	; 		(3) is duration is zero, stop note on that channel
+	; 		(3b) else if decrement duration, set timer to SOUND_RESOLUTION
+	
+	mov A,[r0r1]	; Note DURATION
+	cmp A,0x00
+	jz MIDI_monitor.skip_3bytes
+	; If we're here then the duration isn't zero, i.e. it is an active note
+		inc r1
+		mov A,[r0r1]	; note TIMER
+		dec A 	;(1) Decrement timer
+		mov [r0r1],A
+		cmp A,0x00	; Compare timer to zero
+		jnz MIDI_monitor.skip_2bytes	; if not zero, skip to next channel
+		; If note is active (duration isn't zero) and timer is zero then decrease duration
+			mov [r0r1],SOUND_RESOLUTION	; reset timer
+			;mov A,0x30	;'0'
+			;add A,r2
+			;mov U,A
+			dec r1	; back to duration
+			mov A,[r0r1]	; get duration into A
+			dec A			; decrease 
+			mov [r0r1],A	; duration = duration -1
+			cmp A,0x00
+			jnz MIDI_monitor.skip_3bytes
+			;mov A,0x41	;'A'
+			;add A,r2
+			;mov U,A ; if we see this character then it means a note expired
+			; HERE: SEND STOP BYTE TO APPROPRIATE CHANNEL 
+			inc r1	; timer
+			inc r1 	; bitmask
+			mov A,[r0r1]
+			or A,0x9f ; 0b10011111
+			mov [SOUND_PORT],A
+			;mov r4,A
+			;mov r5,0x01
+			;push_pc+1
+			;call print_hex
+			jmp MIDI_monitor.skip_1byte
+	
+	MIDI_monitor.skip_3bytes:
+	inc r1
+	MIDI_monitor.skip_2bytes:
+	inc r1
+	MIDI_monitor.skip_1byte:
+	inc r1
+	; check for all channels checked here:
+	inc r2
+	mov A,r2	; is A already moving r2?
+	cmp A,0x04
+	jnz MIDI_monitor_loop	; check next channel entry
+
+MIDI_monitor.exit:
+	pop r2
+	pop r1
+	pop r0
+	
+	pop T
+	RET
+	
+playMIDI:
+	; MIDI note 1-127 is in r0
+	; Channel to use is in zero-page memory
+	mov A,r0
+	dec A
+	shl A
+	mov r4r5,MIDI_notes
+	add A,r5
+	mov r5,A
+	mov A,r4
+	addc A,0x00
+	mov r4,A	;r4r5 now contains position in table: MIDI_notes + 2*A
+	
+	mov A,[r4r5]	; High byte of 10-bit number
+	mov r0,A
+	inc r4r5		
+	mov A,[r4r5]	; Low byte of 10-bit number
+	mov r1,A		; r0r1 now contains 10-bit number to pass onto SN76489
+	
+	;mov r4,r0
+	;mov r5,0x01
+	;push_pc+1
+	;call print_hex
+	;mov U,0x0A
+	;mov U,0x0D
+	
+	;mov r4,r1
+	;mov r5,0x01
+	;push_pc+1
+	;call print_hex
+	
+	;mov U,0x0A
+	;mov U,0x0D
+	
+	push_pc+1
+	call playbeep
+	
+	pop T
+	RET
+	
 
 execute_cmd.help:
 	mov r4,COMMAND_TABLE_LEN
@@ -987,6 +1220,22 @@ duncatron1_4: dstr '/_____/\__,_/_/ /_/\___/\__,_/\__/_/   \____/_/ /_/'
 ; 0x0D 		- CMD_TABLE_LENGTH
 ; 0x0E		- High byte of pointer to '*' position in string
 ; 0x0F 		- Low byte of pointer to '*' position in string
+; 0x10		- CHANNEL_BIT_MASK
+0x8011:
+midi_channel_data:
+; 0x11		- channel 0 - duration in units of 0x0B
+; 0x12		- channel 0 - timer resolution byte
+; 0x13 		- channel 0 bitmask - needs to be set in INIT (sound off)
+; 0x14		- channel 1 - duration
+; 0x15		- channel 1 - timer
+; 0x16		- channel 1 bitmask - needs to be set in INIT (sound off)
+; 0x17		- channel 2 - duration
+; 0x18		- channel 2 - timer
+; 0x19		- channel 2 bitmask - needs to be set in INIT (sound off)
+; 0x1A		- channel 3 - duration
+; 0x1B		- channel 3 - timer
+; 0x1C		- channel 3 bitmask - needs to be set in INIT (sound off)
+
 ; data labels don't have to be page-aligned
 
 0x8200:
