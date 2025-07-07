@@ -833,6 +833,9 @@ execute_cmd.play:
 	; 0x20 		- next midi note address (LOW)
 	mov NEXT_MIDI_NOTE_HIGH,r0
 	mov NEXT_MIDI_NOTE_LOW,r1
+	
+	push_pc+1	
+	call sound_off	; Stop all tones and reset channel information
 
 	;mov A,[r0r1]	; relative tick of next note - if zero then play all next notes on free channels
 	;cmp A,0x00
