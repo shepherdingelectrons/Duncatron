@@ -1024,17 +1024,17 @@ MIDI_monitor:
 			je MIDI_monitor.stopandexit
 			
 			mov [0x1D],A 	; relative tick into counter duration
-			mov U,'<'
-			mov r4,A
-			mov r5,0x01
-			push_pc+1
-			call print_hex
+			;mov U,'<'
+			;mov r4,A
+			;mov r5,0x01
+			;push_pc+1
+			;call print_hex
 	
 			mov A,SOUND_RESOLUTION
 			mov [0x1E],A
-			mov U,'>'
-			mov U,0x0A
-			mov U,0x0D
+			;mov U,'>'
+			;mov U,0x0A
+			;mov U,0x0D
 			jmp MIDI_monitor.exit
 	
 	MIDI_monitor.skip_3bytes:
