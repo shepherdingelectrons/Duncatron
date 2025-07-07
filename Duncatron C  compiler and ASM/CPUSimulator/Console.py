@@ -139,11 +139,35 @@ class ConsoleEmulator:
                         ren = self.font.render(chr(character), 0, fg, bg)
                         self.screen.blit(ren, (col*w, row*h))
             
-   
+    def show_value(self,value,x,y):
+        px = x
+        py = y
+        w = 10
+        h = 10
+        BLUE = (0,0,255)
+        PALE_BLUE = (200,200,255)
+        
+        for n in range(0,8):
+            bit = 7-n
+            COLOUR = PALE_BLUE
+            if value & (1<<bit):
+                COLOUR=BLUE
+            pygame.draw.rect(self.screen,COLOUR,(px,py,w,h))
+            px+=w+1
+            
     def pygame_handle(self):
 
         self.RenderConsoleMatrix()
 
+        if self.Computer:
+            self.show_value(self.Computer.Memory[0x8011],500,0)
+            self.show_value(self.Computer.Memory[0x8014],500,11)
+            self.show_value(self.Computer.Memory[0x8017],500,22)
+            self.show_value(self.Computer.Memory[0x801A],500,33)
+            self.show_value(self.Computer.Memory[0x801D],500,44)
+            
+            self.show_value(self.Computer.Memory[0x8021],500,55)
+            
         pygame.display.flip()
         for event in pygame.event.get():
             if event.type == pygame.KEYDOWN:
