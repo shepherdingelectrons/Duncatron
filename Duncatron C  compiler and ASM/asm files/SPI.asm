@@ -22,6 +22,8 @@ DS1302_control equ 0x71
 DS1302_trickle equ 0x09
 DS1302_clkburst equ 0x7d
 
+DS1302_RAM0 equ 0x03 ; 0b1100 0000 
+
 SPI.send: 	; The reason for breaking out such a simple function is that currently
 			; nop instructions are required to ensure timings and that the SPI device has
 			; completed sending before we read/send again.
@@ -109,13 +111,13 @@ mov CONTROL_REG,A	; SPI_EN = 0
 pop T
 RET
 
-DS1302.burst_ushread:
+DS1302.burst_read:
 ; memory location to read data into is r2r3
 	mov A,DS1302_SS		
 	or A,0x08	
 	mov CONTROL_REG,A	; set slave select = 0, SPI_EN = 1
 	
-	mov r0,DS1302_clkburst
+	mov A,DS1302_clkburst
 	push_pc+1			 
 	call SPI.send	; start transaction
 
