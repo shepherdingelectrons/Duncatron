@@ -42,7 +42,7 @@ class DuncatronInterface:
         self.myCPU = CPU.Computer() 
         # *********************** ASSEMBLE CODE *******************************
         print("Assembling code:")
-        self.asm = simple_assembler.Assembler("SystemOS.asm",self.myCPU.Memory)
+        self.asm = simple_assembler.Assembler("..\Building\\SystemOS.asm",self.myCPU.Memory)
         success = self.asm.assemble(show_labels = True)
         # *********************** EMULATE CPU *******************************
         if success:
@@ -286,7 +286,7 @@ class DuncatronInterface:
 
 # Initiate an interface to a console emulated computer (port=None)
 # or a real computer on serial port specified
-Duncatron = DuncatronInterface(port=None) #"COM8")
+Duncatron = DuncatronInterface(port="COM4")
 
 while Duncatron.CPU_UP:
     Duncatron.tick()

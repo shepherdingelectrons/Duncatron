@@ -159,15 +159,15 @@ class ConsoleEmulator:
 
         self.RenderConsoleMatrix()
 
-        if self.Computer:
-            self.show_value(self.Computer.Memory[0x8011],500,0)
-            self.show_value(self.Computer.Memory[0x8014],500,11)
-            self.show_value(self.Computer.Memory[0x8017],500,22)
-            self.show_value(self.Computer.Memory[0x801A],500,33)
-            self.show_value(self.Computer.Memory[0x801D],500,44)
-            
-            self.show_value(self.Computer.Memory[0x8021],500,55)
-            
+##        if self.Computer:
+##            self.show_value(self.Computer.Memory[0x8011],500,0)
+##            self.show_value(self.Computer.Memory[0x8014],500,11)
+##            self.show_value(self.Computer.Memory[0x8017],500,22)
+##            self.show_value(self.Computer.Memory[0x801A],500,33)
+##            self.show_value(self.Computer.Memory[0x801D],500,44)
+##            
+##            self.show_value(self.Computer.Memory[0x8021],500,55)
+##            
         pygame.display.flip()
         for event in pygame.event.get():
             if event.type == pygame.KEYDOWN:
