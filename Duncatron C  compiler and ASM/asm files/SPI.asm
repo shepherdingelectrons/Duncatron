@@ -38,7 +38,6 @@ max7219_loop:
 	push_pc+1
 	call max7219_init
 	
-	mov r3,0x00
 	mov r4r5,digit_sequence
 	
 	clock_loop:
