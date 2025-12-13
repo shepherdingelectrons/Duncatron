@@ -124,8 +124,12 @@ class Assembler:
         for reference in self.labelref:
             label,address = reference
             if not label in self.labels:
-                print("ERROR. "+label+" referenced but not declared")
-                return False
+                if not label in self.equ_symbols:
+                    print("ERROR. "+label+" referenced but not declared")
+                else: # bit of a hack... 
+                    label_address = int(self.equ_symbols[label],16)
+                    self.write_memory(address,label_address>>8)
+                    self.write_memory(address+1,label_address&0xFF)
             else:
                 label_address = self.labels[label]
                 self.write_memory(address,label_address>>8)#self.memory[address] = label_address>>8
@@ -151,6 +155,7 @@ class Assembler:
 
             success_state = self.process_asm_line(cleaned_line,line_number)
             if type(success_state) == str: # a new string was returned, try (once) to decode again
+                print("trying again",success_state)
                 success_state = self.process_asm_line(success_state,line_number)
 
             if success_state!=True:
@@ -260,18 +265,21 @@ class Assembler:
             symbol_found=False
             
             if " " in cleaned_line:
+                print("here at all?",cleaned_line)
                 print(cleaned_line)
                 opcode,p0 = cleaned_line.split(" ")
                 p1 = None
                 if "," in p0:
                     p0,p1 = p0.split(",")
-                print(opcode,p0,p1)
+                print("equ debug:"+opcode+':'+p0+':'+str(p1))
                 if p0 in self.equ_symbols:
                     p0 = self.equ_symbols[p0]
                     symbol_found=True
+                    print("Symbol found p0")
                 if p1 in self.equ_symbols:
                     p1 = self.equ_symbols[p1]
                     symbol_found=True
+                    print("Symbol found p1")
                                 
                 
                 new_line = opcode+" "+p0
@@ -279,7 +287,7 @@ class Assembler:
                     new_line+=","+p1
                 
             if symbol_found:
-                #print("Symbol replaced:",new_line)
+                print("Symbol replaced:",new_line)
                 return new_line
             else:
                 print("Failed to generate machine code on line:",line_number,":",cleaned_line)
@@ -410,7 +418,7 @@ class Assembler:
         self.asmregex.append(("^(MOV r0r1,)([^0^x].*)$",self.MEMORY_LABEL)) # this could be generalised in future to all 16-bit memory reference instructions
         self.asmregex.append(("^(MOV r2r3,)([^0^x].*)$",self.MEMORY_LABEL)) # this could be generalised in future to all 16-bit memory reference instructions
         self.asmregex.append(("^(MOV r4r5,)([^0^x].*)$",self.MEMORY_LABEL)) # this could be generalised in future to all 16-bit memory reference instructions
-
+        
         # Use characters for mov U,0x@@, i.e. mov U,'A'
         self.asmregex.append(("^MOV U,'(.)'$",self.UART_CHAR))
 
@@ -534,8 +542,8 @@ if __name__=="__main__":
     #from .define_instructions import define_instructions
     memory = bytearray(0x10000)
     #asm = Assembler("asm files\\boot.txt",memory,"")
-    filename="..\Building\\SystemOS.asm"
-    #filename = "SystemOS.asm"
+    #filename="..\Building\\SystemOS.asm"
+    filename = "SPI.asm"
     #filename = "asm files\\super_simple_halt.asm"
     asm = Assembler(filename,memory,"")
     success = asm.assemble()
