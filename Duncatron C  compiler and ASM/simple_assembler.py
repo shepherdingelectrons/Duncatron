@@ -370,6 +370,11 @@ class Assembler:
             match = re.match("^(.*)$",data_byte,re.IGNORECASE) # Should always match?
             if match:
                 return (match.group(0),2)
+
+        if data_byte in self.equ_symbols:
+            print(data_byte,"in equ_symbols")
+            return self.process_databyte(self.equ_symbols[data_byte],data_type) # Could cause weird recursive stuff
+            
         print("got here",data_byte,data_type)
         return (False,0)
 
@@ -543,7 +548,7 @@ if __name__=="__main__":
     memory = bytearray(0x10000)
     #asm = Assembler("asm files\\boot.txt",memory,"")
     #filename="..\Building\\SystemOS.asm"
-    filename = "SPI.asm"
+    filename = "ALU_tests.asm"
     #filename = "asm files\\super_simple_halt.asm"
     asm = Assembler(filename,memory,"")
     success = asm.assemble()
