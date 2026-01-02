@@ -34,7 +34,174 @@ MAX7219_DISPLAY_TEST equ 0x0f
 MAX7219_INTENSITY_MIN equ 0x00                       
 MAX7219_INTENSITY_MAX equ 0x0f    
 
+print_hex_ROM equ 0x07d2
+print_str_ROM equ 0x07c1
+
+SD_CMD0: db 0x40,0x00,0x00,0x00,0x00,0x95
+SD_CMD8: db 0x48,0x00,0x00,0x01,0xAA,0x87
+SD_CMD58: db 0x7A,0x00,0x00,0x00,0x00,0x95 ; or is CRC 0x75??
+SD_CMD55: db 0x77,0x00,0x00,0x00,0x00,0x65
+
+SDcard.mount:
+	SDcard.loop:
+	mov U,0x0A
+	mov U,0x0D
+	
+		mov A,F	;128 64 32 16 8  4   2  1
+		;F7  F6 SD RDY OF N  C  Z
+		and A,0x10 ; RX character is waiting
+		jnz SDcard.loop.exit
+	
+	push_pc+1
+	call SD.init
+	nop
+	nop
+	nop
+
+	mov r0r1,SD_CMD0
+	push_pc+1
+	call SD_sendCMD
+	
+	;mov A,r0
+	;cmp A,0x01
+	;jne SDcard.CMD0_failed
+	; CMD0 returned 0x01 (success)
+	
+	mov r0r1,SD_CMD8
+	push_pc+1
+	call SD_sendCMD
+	
+	;mov A,r0
+	;cmp A,0x01
+	;jne SDcard.CMD8_failed
+	; CMD8 returned 0x01 (success)
+
+	mov r0r1,SD_CMD55
+	push_pc+1
+	call SD_sendCMD
+	
+	mov r0r1,SD_CMD58
+	push_pc+1
+	call SD_sendCMD
+	;mov A,r0
+	;cmp A,0x01
+	;jne SDcard.CMD58_failed	
+	; CMD58 returned 0x01
+
+	mov r0r1,CMD_success
+	push_pc+1
+	call print_str_ROM
+	
+	jmp SDcard.loop
+
+
+CMD0_fail_str: dstr 'CMD0 failed!'
+CMD8_fail_str: dstr 'CMD8 failed!'
+CMD58_fail_str: dstr 'CMD58 failed!'
+
+CMD_success: dstr 'CMD0/8/58: ok!'
+
+;####  General helper function print_str
+;####  r0r1 pointer to null-terminated string
+;####  to do: incorporate checking if TX is busy before sending character
+
+SDcard.CMD0_failed:
+mov r0r1,CMD0_fail_str
+push_pc+1
+call print_str_ROM
+jmp SDcard.mount
+
+SDcard.CMD8_failed:
+mov r0r1,CMD8_fail_str
+push_pc+1
+call print_str_ROM
+jmp SDcard.mount
+
+SDcard.CMD58_failed:
+mov r0r1,CMD58_fail_str
+push_pc+1
+call print_str_ROM
+jmp SDcard.mount
+
+SDcard.loop.exit:
+mov U,0x0A
+mov U,0x0D
+	
+pop T
+RET
+
+SD.init:
+	; https://www.dejazzer.com/ee379/lecture_notes/lec12_sd_card.pdf
+	;"To communicate with the SD card, your program has to place the SD card into the SPI mode.
+	; To do this, set the MOSI and CS lines to logic value 1 and toggle SD CLK for at least 
+	; 74 cycles. After the 74 cycles (or more) have occurred, your program should set the CS 
+	; line to 0 and send the command CMD0
+	
+	mov r0,0x0A	; send 10 bytes
+	mov A,SD_SS
+	mov CONTROL_REG,A	; SPI_EN = 0, CS not enabled
+	
+	SD.init.byteloop:
+		mov A,0xFF
+		push_pc+1
+		call SPI.send
+		dec r0
+		jnz SD.init.byteloop
+	pop T
+	RET
+
+SD_sendCMD:
+; r0r1 - pointer to 6 byte memory location of command
+; r0 - return byte with received byte
+mov U,0x0A
+mov U,0x0D
+
+mov r2,0x06
+
+mov A,SD_SS
+or A,0x08	; SPI_EN = 1
+mov CONTROL_REG,A
+
+SD_sendCMD.loop:
+	mov A,[r0r1]
+	push_pc+1
+	call SPI.send
+		
+	inc r0r1
+	dec r2
+	jnz SD_sendCMD.loop
+
+mov r2,0x0A
+SD_sendCMD.MISOloop:
+	mov A,0xFF	; receive byte
+	push_pc+1
+	call SPI.send
+	
+	mov A,SPI_PORT
+	mov r4,A
+	mov r5,0x01
+	push_pc+1
+	call print_hex_ROM
+	
+	;mov A,SPI_PORT
+	;cmp A,0xFF
+	;jne SD_sendCMD.exit
+	
+	dec r2
+	jnz SD_sendCMD.MISOloop
+SD_sendCMD.exit:
+mov r0,SPI_PORT	; get received byte
+
+mov A,SD_SS		
+mov CONTROL_REG,A	; set slave select = 0, SPI_EN = 0
+
+pop T
+RET
+
 max7219_loop:
+	push_pc+1
+	call DS1302.init
+	
 	push_pc+1
 	call max7219_init
 	
@@ -168,7 +335,7 @@ SPI.send: 	; The reason for breaking out such a simple function is that currentl
 	pop T
 	ret
 
-; DS1302 init 
+; DS1302 init `
 DS1302.init:
 	mov r2,DS1302_SS
 	mov r0,DS1302_seconds
