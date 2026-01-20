@@ -6,6 +6,8 @@ SPI_PORT equ [0x8103] ; Check this is correct
 OUT_PORT equ [0x8106]
 IN_PORT equ [0x8107]
 
+SD_LOW_CAPACITY equ [0xff]
+
 DS1302_SS equ 0x00  ; real-time control chip
 SD_SS equ 0x01      ; SD card
 FLASH_SS equ 0x02 	    ; AT25DF081A EEPROM 1Mb (needs Vcc and/or signal voltage shifting)
@@ -37,15 +39,24 @@ MAX7219_INTENSITY_MAX equ 0x0f
 print_hex_ROM equ 0x07d2
 print_str_ROM equ 0x07c1
 
-SD_CMD0: db 0x40,0x00,0x00,0x00,0x00,0x95
-SD_CMD8: db 0x48,0x00,0x00,0x01,0xAA,0x87
+SD_CMD0:  db 0x40,0x00,0x00,0x00,0x00,0x95
+SD_CMD8:  db 0x48,0x00,0x00,0x01,0xAA,0x87
 SD_CMD58: db 0x7A,0x00,0x00,0x00,0x00,0x95 ; or is CRC 0x75??
 SD_CMD55: db 0x77,0x00,0x00,0x00,0x00,0x65
+SD_CMD41_HCS: db 0x69,0x40,0x00,0x00,0x00,0x77
+SD_CMD41: db 0x69,0x00,0x00,0x00,0x00,0xE5
+SD_CMD16: db 0x50,0x00,0x00,0x02,0x00,0xFF
+SD_CMD59: db 0x7B,0x00,0x00,0x00,0x00,0xFF
+SD_CMD1:  db 0x41,0x00,0x00,0x00,0x00,0xF9
+SD_RESPONSE: db 0x00,0x00,0x00,0x00,0x00 	; make sure this ends up going into RAM and not ROM on hardware
+
 
 SDcard.mount:
 	SDcard.loop:
 	mov U,0x0A
 	mov U,0x0D
+	
+	mov r1,0xff	; exit code
 	
 		mov A,F	;128 64 32 16 8  4   2  1
 		;F7  F6 SD RDY OF N  C  Z
@@ -54,79 +65,145 @@ SDcard.mount:
 	
 	push_pc+1
 	call SD.init
-	nop
-	nop
-	nop
 
 	mov r0r1,SD_CMD0
 	push_pc+1
 	call SD_sendCMD
-	
-	;mov A,r0
-	;cmp A,0x01
-	;jne SDcard.CMD0_failed
+	mov r1,0x00	; return code if necessary
+	mov A,r0
+	cmp A,0x01
+	jne SDcard.CMD_failed
 	; CMD0 returned 0x01 (success)
 	
 	mov r0r1,SD_CMD8
 	push_pc+1
 	call SD_sendCMD
-	
-	;mov A,r0
-	;cmp A,0x01
-	;jne SDcard.CMD8_failed
+	mov r1,0x08	; return code if necessary
+	mov A,r0
+	cmp A,0x01 ; might also be 0x05?
+	jne SDcard.CMD_failed
 	; CMD8 returned 0x01 (success)
-
-	mov r0r1,SD_CMD55
-	push_pc+1
-	call SD_sendCMD
 	
 	mov r0r1,SD_CMD58
 	push_pc+1
 	call SD_sendCMD
-	;mov A,r0
-	;cmp A,0x01
-	;jne SDcard.CMD58_failed	
+	mov r1,0x3A	; return code if necessary
+	mov A,r0
+	cmp A,0x01
+	jne SDcard.CMD_failed	
 	; CMD58 returned 0x01
-
+	
+	mov r0r1,SD_RESPONSE	; https://github.com/h0m3/SDCore/blob/master/SDCore.cpp
+	inc r0r1
+	mov A,[r0r1]	; get second received byte
+	and A,0x40		; SDCore::low_capacity = !(SPDR && 0x40);
+	mov B,A
+	not A		; bug in hardware, actually does not B
+	mov SD_LOW_CAPACITY,A ; card low_capacitiy 
+	
+	inc r0r1
+	mov A,[r0r1]	; get third received byte
+	and A,0x78
+	mov r1,0x78		; r1 changes, don't access r0r1 again
+	jz SDcard.CMD_failed	; zero is bad, return r1 set as 0x78
+	
+	SD_CMD55_loop:	; doesn't actually loop for now.
+	
+	mov r0r1,SD_CMD55
+	push_pc+1
+	call SD_sendCMD
+	mov r1,0x37	; return code if necessary
+	mov A,r0
+	cmp A,0x05
+	jne SDcard.CMD55_not_five
+	; CMD55 reply is 0x05
+	; support older cards
+		mov r0r1,SD_CMD1
+		push_pc+1
+		call SD_sendCMD
+		mov r1,0x01
+		mov A,r0
+		cmp A,0x00
+		jz SDcard.CMD55_OK
+		jmp SDcard.CMD_failed
+		
+	SDcard.CMD55_not_five:
+		mov r0r1,SD_CMD41_HCS	; Run ACMD41 with arg 0x40000000 for HCS cards
+		push_pc+1
+		call SD_sendCMD
+		mov r1,0x29	; = 41
+		mov A,r0
+		cmp A,0x00
+		jz SDcard.CMD55_OK
+		
+		; Run ACMD41 for any other card
+		mov r0r1,SD_CMD55
+		push_pc+1
+		call SD_sendCMD
+		
+		mov r0r1,SD_CMD41
+		push_pc+1
+		call SD_sendCMD
+		mov r1,0x2A	; = 42 (to distinguish from other CMD41 call)
+		mov A,r0
+		cmp A,0x00
+		jz SDcard.CMD55_OK
+		jmp SDcard.CMD_failed
+		
+SDcard.CMD55_OK:
 	mov r0r1,CMD_success
 	push_pc+1
 	call print_str_ROM
 	
+	; this is where we would do the final setup stuff
+	mov r0r1,SD_CMD16	; Set block size to 512 bytes
+	push_pc+1
+	call SD_sendCMD
+	mov r1,0x10
+	mov A,r0
+	cmp A,0x00
+	jnz SDcard.CMD_failed
+	
+	mov r0r1,SD_CMD59	; Disable CRC checking
+	push_pc+1
+	call SD_sendCMD
+	mov r1,0x3B
+	mov A,r0
+	cmp A,0x00
+	jnz SDcard.CMD_failed
+	
+	; if got here then all good!
 	jmp SDcard.loop
 
+SDcard.CMD_failed:
+; Could print r0 and r1 codes
+mov U,0x0A
+mov U,0x0D	; r1 contains exit code
 
-CMD0_fail_str: dstr 'CMD0 failed!'
-CMD8_fail_str: dstr 'CMD8 failed!'
-CMD58_fail_str: dstr 'CMD58 failed!'
+; DEBUG
+mov r4,r0
+mov r5,0x01
+push_pc+1
+call print_hex_ROM
+
+; DEBUG
+mov r4,r1
+mov r5,0x01
+push_pc+1
+call print_hex_ROM
+
+mov U,0x0A
+mov U,0x0D
+
+jmp SDcard.loop	; for now just re-enter loop if fails
+pop T
+RET
 
 CMD_success: dstr 'CMD0/8/58: ok!'
 
-;####  General helper function print_str
-;####  r0r1 pointer to null-terminated string
-;####  to do: incorporate checking if TX is busy before sending character
-
-SDcard.CMD0_failed:
-mov r0r1,CMD0_fail_str
-push_pc+1
-call print_str_ROM
-jmp SDcard.mount
-
-SDcard.CMD8_failed:
-mov r0r1,CMD8_fail_str
-push_pc+1
-call print_str_ROM
-jmp SDcard.mount
-
-SDcard.CMD58_failed:
-mov r0r1,CMD58_fail_str
-push_pc+1
-call print_str_ROM
-jmp SDcard.mount
-
-SDcard.loop.exit:
+SDcard.loop.exit:	; clean exit 
 mov U,0x0A
 mov U,0x0D
-	
 pop T
 RET
 
@@ -171,27 +248,58 @@ SD_sendCMD.loop:
 	dec r2
 	jnz SD_sendCMD.loop
 
-mov r2,0x0A
+mov r2,0x08	; Read 8 bytes and return first byte that isn't 0xff
 SD_sendCMD.MISOloop:
 	mov A,0xFF	; receive byte
 	push_pc+1
 	call SPI.send
 	
 	mov A,SPI_PORT
+	cmp A,0xFF
+	jne SD_sendCMD.getMISO	; found first non-0xFF byte
+	
+	dec r2
+	jnz SD_sendCMD.MISOloop
+	
+	mov A,SPI_PORT	; get last received byte (will be 0xFF)
+	push A 			; becomes return byte
+	jmp SD_sendCMD.exit ; if we got here then only 0xFF received, switch off SPI and exit
+
+SD_sendCMD.getMISO:
+	mov r0r1,SD_RESPONSE
+	mov A,SPI_PORT
+	push A	; save first received byte onto stack for return byte
+	
+	mov [r0r1],A	; save into SD_RESPONSE buffer
+	; DEBUG
 	mov r4,A
 	mov r5,0x01
 	push_pc+1
 	call print_hex_ROM
+	;
+	inc r0r1
 	
-	;mov A,SPI_PORT
-	;cmp A,0xFF
-	;jne SD_sendCMD.exit
+	mov r2,0x04	; Read next 4 bytes of response
+	SD_sendCMD.getMISOloop:
+		mov A,0xFF	; receive byte
+		push_pc+1
+		call SPI.send
+		
+		mov A,SPI_PORT
+		mov [r0r1],A
+		
+		; DEBUG
+		mov r4,A
+		mov r5,0x01
+		push_pc+1
+		call print_hex_ROM
+		
+		inc r0r1
+		dec r2
+		jnz SD_sendCMD.getMISOloop
 	
-	dec r2
-	jnz SD_sendCMD.MISOloop
 SD_sendCMD.exit:
-mov r0,SPI_PORT	; get received byte
-
+pop r0
 mov A,SD_SS		
 mov CONTROL_REG,A	; set slave select = 0, SPI_EN = 0
 
