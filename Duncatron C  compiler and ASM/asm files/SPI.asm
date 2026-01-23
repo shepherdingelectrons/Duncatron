@@ -48,8 +48,6 @@ SD_CMD41: db 0x69,0x00,0x00,0x00,0x00,0xE5
 SD_CMD16: db 0x50,0x00,0x00,0x02,0x00,0xFF
 SD_CMD59: db 0x7B,0x00,0x00,0x00,0x00,0xFF
 SD_CMD1:  db 0x41,0x00,0x00,0x00,0x00,0xF9
-SD_RESPONSE: db 0x00,0x00,0x00,0x00,0x00 	; make sure this ends up going into RAM and not ROM on hardware
-
 
 SDcard.mount:
 	SDcard.loop:
@@ -69,7 +67,6 @@ SDcard.mount:
 	mov r0r1,SD_CMD0
 	push_pc+1
 	call SD_sendCMD
-	mov r1,0x00	; return code if necessary
 	mov A,r0
 	cmp A,0x01
 	jne SDcard.CMD_failed
@@ -78,7 +75,6 @@ SDcard.mount:
 	mov r0r1,SD_CMD8
 	push_pc+1
 	call SD_sendCMD
-	mov r1,0x08	; return code if necessary
 	mov A,r0
 	cmp A,0x01 ; might also be 0x05?
 	jne SDcard.CMD_failed
@@ -87,24 +83,50 @@ SDcard.mount:
 	mov r0r1,SD_CMD58
 	push_pc+1
 	call SD_sendCMD
-	mov r1,0x3A	; return code if necessary
 	mov A,r0
 	cmp A,0x01
 	jne SDcard.CMD_failed	
 	; CMD58 returned 0x01
+
+	; Turn on SPI
+	mov A,SD_SS
+	or A,0x08	; SPI_EN = 1
+	mov CONTROL_REG,A
 	
-	mov r0r1,SD_RESPONSE	; https://github.com/h0m3/SDCore/blob/master/SDCore.cpp
-	inc r0r1
-	mov A,[r0r1]	; get second received byte
+	; Get second byte 
+	; https://github.com/h0m3/SDCore/blob/master/SDCore.cpp
+	mov A,0xFF	; receive byte
+	push_pc+1
+	call SPI.send
+	
+	mov A,SPI_PORT	;DEBUG
+	mov r4,A
+	mov r5,0x01
+	push_pc+1
+	call print_hex_ROM
+	
+	mov A,SPI_PORT
 	and A,0x40		; SDCore::low_capacity = !(SPDR && 0x40);
 	mov B,A
 	not A		; bug in hardware, actually does not B
 	mov SD_LOW_CAPACITY,A ; card low_capacitiy 
 	
-	inc r0r1
-	mov A,[r0r1]	; get third received byte
-	and A,0x78
-	mov r1,0x78		; r1 changes, don't access r0r1 again
+	; Get third byte
+	mov A,0xFF	; receive byte
+	push_pc+1
+	call SPI.send
+	
+	mov A,SPI_PORT	;DEBUG
+	mov r4,A
+	mov r5,0x01
+	push_pc+1
+	call print_hex_ROM
+
+	mov A,SPI_PORT
+	and A,0x78			; sets flags
+	; Turn off SPI
+	mov A,SD_SS
+	mov CONTROL_REG,A	; SPI_EN = 0, CS not enabled
 	jz SDcard.CMD_failed	; zero is bad, return r1 set as 0x78
 	
 	SD_CMD55_loop:	; doesn't actually loop for now.
@@ -112,7 +134,6 @@ SDcard.mount:
 	mov r0r1,SD_CMD55
 	push_pc+1
 	call SD_sendCMD
-	mov r1,0x37	; return code if necessary
 	mov A,r0
 	cmp A,0x05
 	jne SDcard.CMD55_not_five
@@ -121,7 +142,6 @@ SDcard.mount:
 		mov r0r1,SD_CMD1
 		push_pc+1
 		call SD_sendCMD
-		mov r1,0x01
 		mov A,r0
 		cmp A,0x00
 		jz SDcard.CMD55_OK
@@ -131,7 +151,6 @@ SDcard.mount:
 		mov r0r1,SD_CMD41_HCS	; Run ACMD41 with arg 0x40000000 for HCS cards
 		push_pc+1
 		call SD_sendCMD
-		mov r1,0x29	; = 41
 		mov A,r0
 		cmp A,0x00
 		jz SDcard.CMD55_OK
@@ -144,22 +163,17 @@ SDcard.mount:
 		mov r0r1,SD_CMD41
 		push_pc+1
 		call SD_sendCMD
-		mov r1,0x2A	; = 42 (to distinguish from other CMD41 call)
+		inc r3	; to distinguish from other CMD41 call
 		mov A,r0
 		cmp A,0x00
 		jz SDcard.CMD55_OK
 		jmp SDcard.CMD_failed
 		
 SDcard.CMD55_OK:
-	mov r0r1,CMD_success
-	push_pc+1
-	call print_str_ROM
-	
 	; this is where we would do the final setup stuff
 	mov r0r1,SD_CMD16	; Set block size to 512 bytes
 	push_pc+1
 	call SD_sendCMD
-	mov r1,0x10
 	mov A,r0
 	cmp A,0x00
 	jnz SDcard.CMD_failed
@@ -167,27 +181,32 @@ SDcard.CMD55_OK:
 	mov r0r1,SD_CMD59	; Disable CRC checking
 	push_pc+1
 	call SD_sendCMD
-	mov r1,0x3B
 	mov A,r0
 	cmp A,0x00
 	jnz SDcard.CMD_failed
 	
 	; if got here then all good!
+	mov r0r1,CMD_success
+	push_pc+1
+	call print_str_ROM
+	
 	jmp SDcard.loop
 
 SDcard.CMD_failed:
-; Could print r0 and r1 codes
+; Could print r0 and r3 codes
+; r3 = SD command byte
+; r0 = received byte
 mov U,0x0A
 mov U,0x0D	; r1 contains exit code
 
 ; DEBUG
-mov r4,r0
+mov r4,r3
 mov r5,0x01
 push_pc+1
 call print_hex_ROM
 
 ; DEBUG
-mov r4,r1
+mov r4,r0
 mov r5,0x01
 push_pc+1
 call print_hex_ROM
@@ -199,7 +218,7 @@ jmp SDcard.loop	; for now just re-enter loop if fails
 pop T
 RET
 
-CMD_success: dstr 'CMD0/8/58: ok!'
+CMD_success: dstr 'SD ok!'
 
 SDcard.loop.exit:	; clean exit 
 mov U,0x0A
@@ -230,10 +249,15 @@ SD.init:
 SD_sendCMD:
 ; r0r1 - pointer to 6 byte memory location of command
 ; r0 - return byte with received byte
+; r3 - return byte with CMD code
+
 mov U,0x0A
 mov U,0x0D
 
 mov r2,0x06
+mov A,[r0r1]	; use first byte (SD cmd) as return code error and
+and A,0x3f		; extract command number 0b 0 1 cmd number
+mov r3,A
 
 mov A,SD_SS
 or A,0x08	; SPI_EN = 1
@@ -254,57 +278,28 @@ SD_sendCMD.MISOloop:
 	push_pc+1
 	call SPI.send
 	
-	mov A,SPI_PORT
-	cmp A,0xFF
-	jne SD_sendCMD.getMISO	; found first non-0xFF byte
-	
-	dec r2
-	jnz SD_sendCMD.MISOloop
-	
-	mov A,SPI_PORT	; get last received byte (will be 0xFF)
-	push A 			; becomes return byte
-	jmp SD_sendCMD.exit ; if we got here then only 0xFF received, switch off SPI and exit
-
-SD_sendCMD.getMISO:
-	mov r0r1,SD_RESPONSE
-	mov A,SPI_PORT
-	push A	; save first received byte onto stack for return byte
-	
-	mov [r0r1],A	; save into SD_RESPONSE buffer
-	; DEBUG
+	mov A,SPI_PORT	;DEBUG
 	mov r4,A
 	mov r5,0x01
 	push_pc+1
 	call print_hex_ROM
-	;
-	inc r0r1
+
+	mov A,SPI_PORT
+	cmp A,0xFF
+	jne SD_sendCMD.exit	; found first non-0xFF byte
 	
-	mov r2,0x04	; Read next 4 bytes of response
-	SD_sendCMD.getMISOloop:
-		mov A,0xFF	; receive byte
-		push_pc+1
-		call SPI.send
-		
-		mov A,SPI_PORT
-		mov [r0r1],A
-		
-		; DEBUG
-		mov r4,A
-		mov r5,0x01
-		push_pc+1
-		call print_hex_ROM
-		
-		inc r0r1
-		dec r2
-		jnz SD_sendCMD.getMISOloop
+	dec r2
+	jnz SD_sendCMD.MISOloop
 	
 SD_sendCMD.exit:
-pop r0
-mov A,SD_SS		
-mov CONTROL_REG,A	; set slave select = 0, SPI_EN = 0
+	mov A,SPI_PORT	; get last received byte (will be 0xFF)
+	mov r0,A		; return byte in r0
+	
+	mov A,SD_SS		; turn off SPI
+	mov CONTROL_REG,A	; set slave select = 0, SPI_EN = 0
 
-pop T
-RET
+	pop T
+	RET
 
 max7219_loop:
 	push_pc+1
