@@ -31,6 +31,7 @@ class Assembler:
         self.labels = {} # Dictionary of labels and their memory addresses
         self.labelref = []
         self.equ_symbols = {}
+        self.auto_strings = {}
 
         self.lookupASM = []
 
@@ -98,6 +99,20 @@ class Assembler:
         if label in self.labels:            
             myline = prelabel+"0x"+format(self.labels[label], '04x')
         else:
+            if label[0]=="&":
+                text = label[2:-1]  # removes & and quotes. Needs regexing in future...
+                if text not in self.auto_strings:   # then make a new entry
+                    string_n = len(self.auto_strings)
+                    string_name = "AUTO_STR"+str(string_n)
+                    self.auto_strings[text]=string_name
+                    self.lines.append(string_name+":") # Now I need to keep track of AUTO_STRn and check if string is already in list
+                    actual_text = label[1:]
+                    self.lines.append("dstr "+actual_text)    # If already in list, add the AUTO_STRn else add new AUTO_STRn+1
+                else:
+                    string_name = self.auto_strings[text]   # just string already declared
+                
+                label = string_name
+                
             self.labelref.append((label,address+offset)) # record where the call/jmp label instruction was to backfill address later
             myline = prelabel+"0x0000"
 
@@ -126,6 +141,7 @@ class Assembler:
             if not label in self.labels:
                 if not label in self.equ_symbols:
                     print("ERROR. "+label+" referenced but not declared")
+                    return False
                 else: # bit of a hack... 
                     label_address = int(self.equ_symbols[label],16)
                     self.write_memory(address,label_address>>8)
@@ -237,9 +253,15 @@ class Assembler:
                         # treat as a memory label
                         self.pointer = self.add_call_or_jmp_reference("",int_bytelist,self.pointer,0,pureData=True)
             elif opcode == self.DATASTRING:
-                datastr = self.process_datastring(asm[1])
+                datastr = self.process_datastring(asm[1]) # returns a string
+                datastr = bytes(datastr,encoding='utf-8')
+                
+                carriage = bytes([92,110])
+                byte_sequence = b'\x0a\x0d'
+                datastr = datastr.replace(carriage,byte_sequence)
+                    
                 for character in datastr:
-                    self.write_memory(self.pointer,ord(character))#self.memory[pointer]=ord(character)
+                    self.write_memory(self.pointer,character)#ord(character))#self.memory[pointer]=ord(character)
                     self.pointer+=1
                 self.write_memory(self.pointer,0)#self.memory[pointer]=0 # Add zero terminator automatically
                 self.pointer+=1
@@ -302,15 +324,17 @@ class Assembler:
     def process_datastring(self, data_str):
         # Check for ',' not in quotation marks and concatenate, return string
         in_quote = 1 # Inside a quote mark by default
-        return_str = ""
+        return_str = ''    # return a byte array
         for char in data_str:
             if char=="'":
                 in_quote = 1-in_quote
                 if in_quote: # Just started a new string so terminate the old one
-                    return_str+=chr(0)
+                    zero = 0
+                    return_str+=chr(0)#zero.to_byte(1,'big')
             else:
                 if in_quote:
-                    return_str+=char # Only add characters in quotes
+                    #asc = ord(char)
+                    return_str+=char#asc.to_bytes(1,'big') # Only add characters in quotes
         return return_str
     
     def process_databyte(self, data_byte, data_type):
@@ -423,7 +447,7 @@ class Assembler:
         self.asmregex.append(("^(MOV r0r1,)([^0^x].*)$",self.MEMORY_LABEL)) # this could be generalised in future to all 16-bit memory reference instructions
         self.asmregex.append(("^(MOV r2r3,)([^0^x].*)$",self.MEMORY_LABEL)) # this could be generalised in future to all 16-bit memory reference instructions
         self.asmregex.append(("^(MOV r4r5,)([^0^x].*)$",self.MEMORY_LABEL)) # this could be generalised in future to all 16-bit memory reference instructions
-        
+
         # Use characters for mov U,0x@@, i.e. mov U,'A'
         self.asmregex.append(("^MOV U,'(.)'$",self.UART_CHAR))
 
@@ -548,7 +572,7 @@ if __name__=="__main__":
     memory = bytearray(0x10000)
     #asm = Assembler("asm files\\boot.txt",memory,"")
     #filename="..\Building\\SystemOS.asm"
-    filename = "ALU_tests.asm"
+    filename = "SPI.asm"
     #filename = "asm files\\super_simple_halt.asm"
     asm = Assembler(filename,memory,"")
     success = asm.assemble()
@@ -556,6 +580,9 @@ if __name__=="__main__":
         print("Assembling successful")
         for lab in asm.labels:
             print(lab,":",hex(asm.labels[lab]))
+        for autostr in asm.auto_strings:
+            print(autostr,":",asm.auto_strings[autostr])
+            
         asm.burn_binary()
         asm.burn_headerfile()
         print(asm.equ_symbols)
