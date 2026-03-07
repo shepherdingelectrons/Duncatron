@@ -1,5 +1,111 @@
 import random
 
+class ControlReg:
+    def __init__(self, comp):
+        self.value = 0x00
+        self.Computer = comp
+
+    def write_byte(self,tx_byte):
+        self.value = tx_byte
+        SPI_EN = (self.value & 0b1000)>>3
+        SS = self.value & 0b111
+
+        sd_card = self.Computer.MMPs[0x8103]
+
+        SD_SS = (SS==0x01 and SPI_EN==1)
+        
+        if sd_card.SS==False and SD_SS:
+            # If was inactive, SD card is now active
+            sd_card.SS=True
+            sd_card.MOSI=[] # wipe MOSI queue, new command
+            #print("SD card SS TRUE")
+            
+        if sd_card.SS==True and SD_SS==False:
+            # If was active, it is now inactive
+            sd_card.SS=False
+            #print("SD card SS FALSE")
+
+    def read_byte(self):
+        return self.value
+    
+class SD_card:
+    def __init__(self,comp):
+        self.MOSI = []
+        self.MISO = []
+        self.SS = False
+        self.Computer = comp
+        self.value = 0xFF
+
+        self.sdimage = open("test.img","rb")
+
+    def __del__(self):
+        self.sdimage.close()
+
+    def write_byte(self, send_byte):
+        #print("SD byte received:",send_byte)
+
+        if self.SS: # SD card slave select
+            self.MOSI.append(send_byte)
+            #print("SD byte received:",send_byte)
+
+            command_start = ((self.MOSI[0] & 0b11000000)>>6) == 1
+            if len(self.MOSI)==6 and command_start:
+                self.process_MOSI()
+
+            self.value = 0xFF
+            #print("self.MISO=",self.MISO)
+            if len(self.MISO)>0:
+                self.value = self.MISO[0]
+                self.MISO = self.MISO[1:]
+                
+        else:
+            print("SD byte received, no SS",send_byte)
+            #print("SS not selected")
+            
+    def process_MOSI(self):
+        #print("Triggering MOSI processing")
+       # print(self.MOSI)
+        cmd = self.MOSI[0] & 0b111111
+
+        if cmd == 0:
+            self.MISO = [0x01]
+        elif cmd == 8:
+            self.MISO = [0x01]
+        elif cmd == 58:
+            self.MISO = [0x01,0x40,0x79]
+        elif cmd == 55:
+            self.MISO = [0x00]
+        elif cmd == 41:
+            self.MISO = [0x00]
+        elif cmd == 16:
+            self.MISO = [0x00]
+        elif cmd == 59:
+            self.MISO = [0x00]
+        elif cmd ==17:
+            address = self.MOSI[1]<<24 | self.MOSI[2]<<16 | self.MOSI[3]<<8 | self.MOSI[4]
+            self.get_block(address)
+        else:
+            print("CMD not recognised:",cmd)
+        self.MISO = [0xFF] + self.MISO
+        self.MOSI = []
+    
+    def read_byte(self):
+        #print("SD byte sending back:",self.value)
+        return self.value
+
+    def return_block(self,address,num_bytes):
+        self.sdimage.seek(address,0)
+        block = self.sdimage.read(num_bytes)
+        return block
+            
+    def get_block(self,address):
+        print("SD card address requested:",address)
+        self.MISO=[0x00,0xFF,0xFF,0xFE] # Response byte is 0x00, some 0xFF padding and then 0xfe is the start of image data
+        self.sdimage.seek(address,0)
+        for i in range(0,512):
+            char = self.sdimage.read(1) # Get int from byte object
+            self.MISO.append(char[0])#(address+i) & 0xff)
+    
 class signal():
     def __init__(self,Computer,signalname,activeLow=False,demux=False):
         self.name = signalname
@@ -9,6 +115,8 @@ class signal():
         self.Computer = Computer
 
         self.Computer.signal_group.append(self) # Add an instance to the list
+
+        self.MemoryMap = [] # Tuples of type: memory address and memory map object
         
     def isactive(self,demux_index):
         if demux_index==None:
@@ -366,9 +474,9 @@ class ArithmeticLogicUnit():
         if alu==0: #add a,b
             return (a+b,(a+b)<256)
         elif alu==1: #sub a,b
-            return (a-b, a-b<0) # a<b = a-b<0
+            return (a-b, a<b) 
         elif alu==2: # cmp a,b
-            return (a-b, a-b<0)
+            return (a-b, a<b) 
         elif alu==3: # dec a
             return (a-1,a-1<0) 
         elif alu==4: # addc a,b
@@ -519,6 +627,9 @@ class Computer():
         self.U_reg = register(self,name="U",IN=(self.INen,0))#,OUT=(INen,1))
 
         self.Memory = bytearray(2**16)
+        self.MMPs = {}
+        self.MMPs[0x8102]=ControlReg(self) # Control register, pass on Computer (self) reference
+        self.MMPs[0x8103]=SD_card(self) # SD card
         
         # obj,sig,dm,action,clocklatch 
         self.CPU.connect(self.PC,self.PCinc,None,self.PC.increment,clocklatch=True)
@@ -563,11 +674,17 @@ class Computer():
     def RAMout(self):
         addr = (self.MAR.valueHI<<8) | self.MAR.value
         value = self.Memory[addr]
+        if addr in self.MMPs:
+            value = self.MMPs[addr].read_byte()
+            
         self.LOW_databus.set(value)
 
     def RAMin(self):
         addr = (self.MAR.valueHI<<8) | self.MAR.value
-        self.Memory[addr] = self.LOW_databus.value
+        if addr in self.MMPs:
+            self.MMPs[addr].write_byte(self.LOW_databus.value)
+        else:
+            self.Memory[addr] = self.LOW_databus.value
 
     def randomiseRAM(self,start,end): # To simulate random values in RAM at startup and to help uncover bugs that otherwise assume RAM is always zero
         for m in range(start,end):

@@ -119,6 +119,8 @@ class ConsoleEmulator:
             fg,bg=self.fcol_default,self.bcol_default
         self.CharMatrix[self.fy][self.fx]=(char,fg,bg)
 
+        print(chr(char),end='')
+
     def RenderConsoleMatrix(self):
         fg = self.fcol_default #0,0,0 #250, 240, 230
         bg = self.bcol_default # 255,255,255#5, 5, 5
@@ -136,8 +138,12 @@ class ConsoleEmulator:
                         fg = self.fcol_default
                         bg = self.bcol_default
                     if character>31:
-                        ren = self.font.render(chr(character), 0, fg, bg)
-                        self.screen.blit(ren, (col*w, row*h))
+                        try:
+                            ren = self.font.render(chr(character), 0, fg, bg)
+                            self.screen.blit(ren, (col*w, row*h))
+                        except:
+                            print("Pygame.error: zero text width")
+                        
             
     def show_value(self,value,x,y):
         px = x
@@ -160,14 +166,15 @@ class ConsoleEmulator:
         self.RenderConsoleMatrix()
 
 ##        if self.Computer:
-##            self.show_value(self.Computer.Memory[0x8011],500,0)
-##            self.show_value(self.Computer.Memory[0x8014],500,11)
-##            self.show_value(self.Computer.Memory[0x8017],500,22)
-##            self.show_value(self.Computer.Memory[0x801A],500,33)
-##            self.show_value(self.Computer.Memory[0x801D],500,44)
+##            print(self.Computer)
+##            self.show_value(self.Computer.Memory[0x8400],500,0)
+##            self.show_value(self.Computer.Memory[0x8401],500,11)
+##            self.show_value(self.Computer.Memory[0x8402],500,22)
+##            self.show_value(self.Computer.Memory[0x8403],500,33)
+##            self.show_value(self.Computer.Memory[0x8404],500,44)
 ##            
 ##            self.show_value(self.Computer.Memory[0x8021],500,55)
-##            
+            
         pygame.display.flip()
         for event in pygame.event.get():
             if event.type == pygame.KEYDOWN:
