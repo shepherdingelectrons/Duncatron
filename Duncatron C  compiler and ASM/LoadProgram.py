@@ -42,7 +42,7 @@ class DuncatronInterface:
         self.myCPU = CPU.Computer() 
         # *********************** ASSEMBLE CODE *******************************
         print("Assembling code:")
-        self.asm = simple_assembler.Assembler("..\Building\\SystemOS.asm",self.myCPU.Memory)
+        self.asm = simple_assembler.Assembler("SystemOS.asm",self.myCPU.Memory)
         success = self.asm.assemble(show_labels = True)
         # *********************** EMULATE CPU *******************************
         if success:
@@ -268,6 +268,7 @@ class DuncatronInterface:
             return
         import CPUSimulator.Console as Console
 
+        print("Opened port!")
         self.myConsole = Console.ConsoleEmulator()
         self.myConsole.connectPort(self.port)
         self.CPU_UP = True
@@ -284,13 +285,43 @@ class DuncatronInterface:
     def closeSerial(self):
         self.port.close()
 
+    def InsertASM(self,filename,address):
+        file, file_extension = os.path.splitext(filename)
+        tempmemory = bytearray(0x10000)
+        self.asm = simple_assembler.Assembler(filename,tempmemory,loadPOS=address)
+        success = self.asm.assemble()
+        if success:
+            for lab in self.asm.labels:
+                print(lab+":"+hex(self.asm.labels[lab]))
+            self.asm.burn_binary()
+            binfilename = file+".bin"
+            BINfile = open(binfilename,"rb") # open file
+            contents = BINfile.read()
+            mem_pointer = address
+            for byte in contents:
+                self.myCPU.Memory[mem_pointer] = byte
+                mem_pointer+=1
+
+            BINfile.close()
+        else:
+            self.myConsole.printConsoleString("Could not assemble and insert into memory!")
+            print("Could not assemble and insert into memory!",filename,address)
+            return
+
 # Initiate an interface to a console emulated computer (port=None)
 # or a real computer on serial port specified
-Duncatron = DuncatronInterface(port="COM4")
+Duncatron = DuncatronInterface()#port="COM8")
+Duncatron.InsertASM("SPI.asm",address=0x9000)
+sd_block = Duncatron.myCPU.MMPs[0x8103].return_block(0x10200,512)
+mem_pointer = 0x8300
+for b in sd_block:
+    Duncatron.myCPU.Memory[mem_pointer]=b
+    mem_pointer+=1
+
+partition_memory = [0x01,0x81,0x00,0x00]
 
 while Duncatron.CPU_UP:
     Duncatron.tick()
         
 Duncatron.close()
 
-    
