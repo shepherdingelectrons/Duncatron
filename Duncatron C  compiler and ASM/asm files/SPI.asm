@@ -82,6 +82,9 @@ SD_ROOT_ADDRESSES equ 0x8510	; 4 partitions * [32-bit address (4 bytes) + 1] = 2
 ; +11-14 root address (big endian)
 ; +15 - valid/invalid root 3 address
 ; +16-19 root address (big endian)
+SD_FAT_TABLE equ 0x8524			; 4 partitions 
+; +0 - valid/invalid partition fat address
+; +1-3	fat table address (bit endian)
 
 SDcard.test:
 	push_pc+1
@@ -125,11 +128,23 @@ SDcard.test:
 	jnz SDcard.error
 	
 	push_pc+1
-	call SD.bootsector_info
+	call SD.bootsector_info	; no error codes
 	
 	push_pc+1
 	call SD.get_rootinfo
+	mov A,r0
+	cmp A,0x00
+	jnz SDcard.error
+
+jump_point_test:
+	push_pc+1
+	call SD.calc_FAT_address
+	mov A,r0
+	cmp A,0x00
+	jnz SDcard.error
 	
+	push_pc+1
+	call SD.get_rootdir
 	
 	mov r0r1,&'\nSD card OK!\n'
 	push_pc+1
@@ -566,9 +581,14 @@ SD.bootsector_info:	; assumes bootsector is loaded into memory
 	push_pc+1
 	call SD.print_property
 	
+	mov r0r1,&'\nRoot dir entries: 0x'
+	mov r4,0x02
+	push_pc+1
+	call SD.print_property
+	
 	mov r0r1,&'\nFat size sectors: 0x'
 	mov r4,0x02
-	mov r5,0x05
+	mov r5,0x03 ; was five
 	push_pc+1
 	call SD.print_property
 
@@ -631,6 +651,8 @@ SD.get_rootinfo:	; assumes bootsector is loaded into SD_BLOCK
 	mov r4,0x01	; get one byte of SD_NUM_FATS
 	push_pc+1
 	call SD.get_property
+	
+	; /******************* to do : Save number ofr root_dir-entries here and use*************/
 	
 	mov r5,0x05	; +5 offset from current position
 	mov r4,0x02	; 2 bytes of SD_FAT_SIZE_SECTORS
@@ -764,20 +786,261 @@ SD.get_rootinfo:	; assumes bootsector is loaded into SD_BLOCK
 	mov A,r2
 	mov [r4r5],A
 	
-	; we have r3r0r1r2
-	; requires r2r3r4r5
-	; therefore:
-	mov r5,r2
-	mov r4,r1
-	mov r2,r3
-	mov r3,r0
-	push_pc+1
-	call SD.readblock
+	mov r0,0x00 ; no error
+	pop T
+	ret
 	
 SD.get_rootinfo.error:
 	mov r0,0x01
-SD.get_rootinfo.exit:
+	pop T
+	ret 
+
+SD.calc_FAT_address:
+	; (bootsector partition addr pre scale + bs.reserved_sectors) *bs.sector_size
+	; no need to * bs.sector_size = <<9, this is taken care of in readblock
+	; bootsector parition addr pre-scale = 3 bytes at SD_PARTITIONS LITTLE-ENDIAN
+	mov r4r5,SD_PARTITIONS
+	mov A,SD_CURRENT_PARTITION
+	shl A
+	shl A	; A*4
+	mov B,SD_CURRENT_PARTITION
+	add A,B ;SD_CURRENT_PARTITION	; 5*A
 	
+	add A,r5
+	mov r5,A
+	mov A,r4
+	addc A,0x00
+	mov r4,A	;r4r5 = SD_ROOT_ADDRESS = 5* SD_CURRENT_PARTITION
+	
+	mov A,[r4r5]
+	cmp A,0x01
+	jne SD.calc_FAT_address.error	; make sure there is a valid partition
+	
+	inc r4r5
+	mov A,[r4r5]
+	mov r2,A
+	inc r4r5
+	mov A,[r4r5]
+	mov r1,A
+	inc r4r5
+	mov A,[r4r5]
+	mov r0,A
+		
+	; base address is now big endian r0:r1:r2
+	mov r4,SD_RESERVED_SECTORS_MSB
+	mov r5,SD_RESERVED_SECTORS_LSB
+	; add r0r1r2 = r0r1r2 + r4r5
+	mov A,r2
+	add A,r5
+	mov r2,A
+	
+	mov A,r1
+	addc A,r4
+	mov r1,A
+	mov A,r0
+	addc A,0x00
+	mov r0,A
+	; fat address r0r1r2
+	mov r4r5,SD_FAT_TABLE
+	mov A,SD_CURRENT_PARTITION
+	shl A
+	shl A	; A*4
+	add A,r5
+	mov r5,A
+	mov A,r4
+	addc A,0x00
+	mov r4,A	;r4r5 = SD_ROOT_ADDRESS = 4* SD_CURRENT_PARTITION
+	
+	mov A,0x01
+	mov [r4r5],A
+	inc r4r5
+	mov A,r0
+	mov [r4r5],A
+	inc r4r5
+	mov A,r1
+	mov [r4r5],A
+	inc r4r5
+	mov A,r2
+	mov [r4r5],A
+	inc r4r5		; stores FAT table address 
+		
+	mov r0,0x00
+	pop T
+	RET
+	
+SD.calc_FAT_address.error:
+	mov U,'£'
+	mov r0,0x01
+	pop T
+	ret
+	
+SD.get_rootdir:	; checks if SD_ROOT_ADDRESSES has been calculated (address of root table in FAT16)
+	; saved in big endian 
+	; requires r2r3r4r5
+	mov r0r1,SD_ROOT_ADDRESSES
+	mov A,[r0r1]
+	cmp A,0x01		; means a valid partition
+	jne SD.get_rootdir.error
+	
+	inc r0r1
+	mov A,[r0r1]
+	mov r2,A
+	
+	inc r0r1
+	mov A,[r0r1]
+	mov r3,A
+	
+	inc r0r1
+	mov A,[r0r1]
+	mov r4,A
+	
+	inc r0r1
+	mov A,[r0r1]
+	mov r5,A
+	
+	push_pc+1
+	call SD.readblock	; will return error code in r0
+	mov A,r0
+	cmp A,0x00
+	jne SD.get_rootdir.error
+	; Process directory entries in some way
+	mov r2r3,SD_BLOCK ; start of data
+
+	mov A,0x10	; loop counter (ran out of registers) - fixed 16 files maximum for now
+	
+	rootdir.loop:
+		push A
+		
+		mov A,r3
+		add A,0x20	; add 32 to r2r3 and store it in r4r5 (next record address if skipping)
+		mov r5,A
+		mov A,r2
+		addc A,0x00
+		mov r4,A
+		
+		mov A,[r2r3]	
+		
+		; 0x00 = unused entry, skip
+		; 0xE5 = deleted file
+		; 0x05 = file starting with E5
+		; 0x2E = directory
+		; otherwise/default = regular file
+		
+		cmp A,0x00
+		je rootdir.loop.skip_entry
+		
+		cmp A,0xE5
+		je rootdir.loop.skip_entry
+		
+		cmp A,0x05		; This is files that start with 0xE5 character.. don't have files starting with 0xe5, we don't support
+		je rootdir.loop.skip_entry
+		
+		;mov r4,A ;0x00	; is directory flag
+		;cmp A,0x2e
+		;jne rootdir.loop.file	; if A-=0x2e then is a directory, else is a normal file (so jump)
+
+		;mov r0r1,&'\n<DIR>: ['
+		;push_pc+1
+		;call print_str_ROM
+		;jmp rootdir.loop.fileprint
+		
+		push r3
+		mov A,r3
+		add A,0x0B	; skip to directory attribute byte
+		mov r3,A
+		mov A,[r2r3]
+		;mov r4,A	; save directory status in r4
+		pop r3	; restore r3
+		
+		cmp A,0x10
+		jne rootdir.loop.file
+		
+		mov r0r1,&'\n<DIR> ['
+		push_pc+1
+		call print_str_ROM
+		
+		mov r0,r2
+		mov r1,r3	
+		
+		mov r5,0x08
+		push_pc+1
+		call print_str_n	; i.e. "HAMLET "
+		
+		mov A,r3
+		add A,0x1a	; move to FAT start bytes	
+		mov r3,A
+		mov A,r2
+		addc A,0x00
+		mov r2,A
+		
+		mov r0r1,&']     FAT start: ['
+		mov r4,0x02
+		mov r5,0x00
+		
+		push_pc+1
+		call SD.print_property
+		mov U,']'
+		
+		inc r2r3
+		inc r2r3
+		inc r2r3
+		inc r2r3
+		
+		jmp rootdir.decrement
+		
+	rootdir.loop.file:
+		mov r0r1,&'\nFile: ['
+		push_pc+1
+		call print_str_ROM
+
+		mov r0,r2
+		mov r1,r3	
+		
+		mov r5,0x08
+		push_pc+1
+		call print_str_n	; i.e. "HAMLET "
+		mov U,'.'			; not hardware UART safe
+		mov r5,0x03
+		push_pc+1
+		call print_str_n	; i.e. "TXT"
+		; NB r0r1 was updated here, not r2r3
+		
+		mov A,r3
+		add A,0x1a	; move to FAT start bytes	
+		mov r3,A
+		mov A,r2
+		addc A,0x00
+		mov r2,A
+		
+		mov r0r1,&'] FAT start: ['
+		mov r4,0x02
+		mov r5,0x00
+		
+		push_pc+1
+		call SD.print_property
+		;mov U,']'
+		
+		mov r0r1,&'] Size: ['
+		mov r4,0x04
+		push_pc+1
+		call SD.print_property
+		mov U,']'
+		
+		mov r4,r2
+		mov r5,r3
+	rootdir.loop.skip_entry:
+		mov r2,r4		; does nothing ordinarily, except if we jumped here then r4r5=r2r3+16
+		mov r3,r5
+	rootdir.decrement:	
+		pop A
+		dec A
+		jnz rootdir.loop
+	
+	pop T
+	ret
+	
+SD.get_rootdir.error:
+	mov r0,0x01
 	pop T
 	ret 
 
@@ -988,6 +1251,14 @@ SD.reset_memory_tables:
 		inc r0r1
 		dec r2
 		jnz reset.root.clear	
+	
+	mov r0r1,SD_FAT_TABLE
+	mov r2,0x10	; 16 bytes
+	reset.fat.clear:
+		mov [r0r1],0x00
+		inc r0r1
+		dec r2
+		jnz reset.fat.clear	
 		
 	pop T
 	RET
