@@ -1,3 +1,6 @@
+// avrdude -c USBtiny -p m328p -P USB
+// avrdude -C USBtiny -p m328p -P USB -U flash:r:"ATMega328 Logic control.hex":i
+
 #include <avr/io.h>
 #include <stdio.h>
 #include <avr/pgmspace.h>
@@ -44,6 +47,8 @@
 #define PAUSE_THRESHOLD 50
 #define MAX_THRESHOLD 1000
 #define LOOP_MINIMUM 400//40
+
+void test_INS(uint8_t);
 
 void USART_init(void){
 	UBRR0H = (uint8_t)(BAUD_PRESCALLER>>8);
@@ -402,40 +407,45 @@ uint8_t readMEM(uint16_t address)
 	return mem_byte;	
 }
 
+void test_INS(uint8_t dir)
+{
+		// Test Ireg reading
+		// if dir==1 then count backwards
+		uint8_t Ireg_read, byte0;
+		uint16_t Ireg_write,index;
+			
+		for (index=0;index<256;index++)
+		{
+			// Set I register on board
+			
+			Ireg_write = index;
+			if (dir==1) Ireg_write = 255-index;
+			
+			byte0 = BYTE0_INACTIVE;
+			clr_bit(byte0,SIGNAL_Ii); //active low
+			clr_bit(byte0,SIGNAL_MARi);
+			set_signals_data(byte0,BYTE1_INACTIVE,BYTE2_INACTIVE,Ireg_write);
+			DELAY_LOOP(1000);
+			Ireg_read = PIND;
+			if (Ireg_read!=Ireg_write)
+			{
+				while(1)
+				{
+					writeMAR((uint16_t) Ireg_read<<8 | Ireg_write);
+				}
+			}
+			DELAY_LOOP(5000);
+		}
+}
 
-void test_stuff(void)
+void burndata(const uint8_t *data, uint16_t data_len)
 {
 	uint8_t read_byte,write_byte;
 	uint16_t code_index;
-	
-	DELAY_LOOP(2000000); // 2 seconds to let system settle
-	
-	// Test Ireg reading
-	
-	uint8_t Ireg_read, byte0;
-	for (uint16_t Ireg_write=0;Ireg_write<256;Ireg_write++)
+
+	for (code_index=0;code_index<data_len;code_index++)
 	{
-		// Set I register on board
-		byte0 = BYTE0_INACTIVE;
-		clr_bit(byte0,SIGNAL_Ii); //active low
-		clr_bit(byte0,SIGNAL_MARi);
-		set_signals_data(byte0,BYTE1_INACTIVE,BYTE2_INACTIVE,Ireg_write);	
-		DELAY_LOOP(1000);
-		Ireg_read = PIND;
-		if (Ireg_read!=Ireg_write)
-		{
-			while(1)
-			{
-				writeMAR((uint16_t) Ireg_read<<8 | Ireg_write);
-			}
-		}
-		DELAY_LOOP(5000);
-	}
-	// Writing:
-	
-	for (code_index=0;code_index<program_code_len;code_index++)
-	{
-		write_byte = pgm_read_byte(BurnProgram+code_index); // Read what we should have
+		write_byte = pgm_read_byte(data+code_index); // Read what we should have
 		read_byte = readMEM(code_index); // Read what we do have
 		
 		if (read_byte!=write_byte) // If different, write the expected byte
@@ -455,13 +465,35 @@ void test_stuff(void)
 				DELAY_LOOP(500000);
 				writeMAR(code_index);
 				DELAY_LOOP(500000);
-				/*writeMAR(0xAAAA);
-				DELAY_LOOP(500000);
-				writeMAR(0x5555);
-				DELAY_LOOP(500000);*/
 			};
 		}	
 	}
+	
+}
+
+void test_stuff(void)
+{	
+	DELAY_LOOP(2000000); // 2 seconds to let system settle
+	
+	test_INS(0);
+	burndata(BurnProgram,program_code_len);
+	}
+
+void burnEEPROM(void)
+{
+	DELAY_LOOP(2000000); // 2 seconds to let system settle
+	
+	test_INS(1);
+	
+	burndata(control2,8192);
+	//control_byte0 = pgm_read_byte(control0+address);	
+	while(1)	// Success flash!
+	{
+		writeMAR(0x0ff0);
+		DELAY_LOOP(500000);
+		writeMAR(0xf00f);
+		DELAY_LOOP(500000);
+	};
 }
 
 int main(void)
@@ -486,6 +518,8 @@ int main(void)
 	
 	test_stuff();
 
+	//burnEEPROM();
+	
     while (1) 
     {
 		

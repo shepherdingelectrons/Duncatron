@@ -29,12 +29,13 @@ attiny85-8.build.variant=tiny8
 
 #define PAUSE_THRESHOLD 100
 #define MAX_THRESHOLD 1000
-#define LOOP_TIMER 200 // main loop timer frequency
+#define LOOP_TIMER 100 // main loop timer frequency
 #define MIN_FREQ 2
 #define MAX_FREQ 1000000
 
 void setup_pins(void)
 {
+	clr_bit(PORTB,CLK_PIN); // set to low
 	DDRB = (1 << CLK_PIN); // OUTPUT CLK_PIN		
 }
 
@@ -49,6 +50,7 @@ void setup_timer1(void)
 	TIFR = 0;
 	
 	GTCCR = (1 << COM1B0); // set the OC1B to toggle on match
+	clr_bit(PORTB,CLK_PIN);
 }
 
 void timer1_setfreq(unsigned long frequency)
@@ -71,8 +73,9 @@ void timer1_setfreq(unsigned long frequency)
 	ocr -= 1;
 	
 	//TCNT1 = 0; // timer 1 counter = 0	
+	TCCR1 = (1<<CTC1); // disconnect the timer
+	OCR1C = ocr; // set new compare value
 	TCCR1 = (1<<CTC1)| (prescalarbits<<CS10); // CTC1 : Clear Timer/Counter on Compare Match, after compare match with OCR1C value
-	OCR1C = ocr; // set compare value
 }
 
 
@@ -105,6 +108,8 @@ int main(void)
 	setup_pins();
 	setup_timer1();
 	
+	DELAY_LOOP(1000000);
+		
 	while (1)
 	{
 		looptimer++;
@@ -126,7 +131,7 @@ int main(void)
 				adc_value -= PAUSE_THRESHOLD;
 				uint16_t new_freq;
 				
-				new_freq = MIN_FREQ + (adc_value>>4); // * 8 
+				new_freq = MIN_FREQ + (adc_value>>4); 
 				
 				timer1_setfreq(new_freq);
 			}
