@@ -1248,7 +1248,7 @@ def write_C_header(EEPROM_BYTE):
     # #include <avr/pgmspace.h>
     # https://www.arduino.cc/reference/tr/language/variables/utilities/progmem/
     f = open("control_EEPROM"+str(EEPROM_BYTE)+".h","w")
-    f.write("const PROGMEM uint_8 control"+str(EEPROM_BYTE)+"[] = {")
+    f.write("const PROGMEM uint8_t control"+str(EEPROM_BYTE)+"[] = {")
     batches = 16
     for addr in range(0,2**(8+2+3),batches):
         f.write("\n")
