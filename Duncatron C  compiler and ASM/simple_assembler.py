@@ -14,6 +14,8 @@ class Assembler:
     UART_CHAR = 262
     EQU_SYMBOL = 263
 
+    CMP_CHAR = 264
+
     
     def __init__(self,filename,memory,text="",loadPOS=0):
         self.lines = []
@@ -132,6 +134,7 @@ class Assembler:
         if symbol in self.equ_symbols:
             return False
         self.equ_symbols[symbol] = replacement_value
+        print(symbol,replacement_value)
         self.equ_symbols['['+symbol+']'] = '['+replacement_value+']' # also add as addressing
         return True
     
@@ -270,6 +273,12 @@ class Assembler:
                 UART_OPCODE = self.machinecode("MOV U,0x00")[0]
                 self.write_memory(self.pointer,UART_OPCODE)
                 self.write_memory(self.pointer+1,uart_byte)
+                self.pointer+=2
+            elif opcode == self.CMP_CHAR:
+                cmp_byte = ord(asm[1])
+                CMP_OPCODE = self.machinecode("CMP A,0x00")[0]
+                self.write_memory(self.pointer,CMP_OPCODE)
+                self.write_memory(self.pointer+1,cmp_byte)
                 self.pointer+=2
             elif opcode == self.EQU_SYMBOL:
                 if self.add_equ_symbol(asm[1],asm[2])==False:
@@ -450,6 +459,8 @@ class Assembler:
 
         # Use characters for mov U,0x@@, i.e. mov U,'A'
         self.asmregex.append(("^MOV U,'(.)'$",self.UART_CHAR))
+        # cmp A,'A' (i.e. ord("A"))
+        self.asmregex.append(("^CMP A,'(.)'$",self.CMP_CHAR))
 
         # EQU symbol support
         self.asmregex.append(("^(.*) equ (.*)$",self.EQU_SYMBOL))
@@ -466,7 +477,7 @@ class Assembler:
             if match_result:
                 machine_code.append(opcode)
                 for match in match_result.groups():
-                    if opcode!=self.DATASTRING and opcode!=self.UART_CHAR:
+                    if opcode!=self.DATASTRING and opcode!=self.UART_CHAR and opcode!=self.CMP_CHAR:
                         try:
                             machine_code.append(int("0x"+match,16))
                         except ValueError:
@@ -572,7 +583,7 @@ if __name__=="__main__":
     memory = bytearray(0x10000)
     #asm = Assembler("asm files\\boot.txt",memory,"")
     #filename="..\Building\\SystemOS.asm"
-    filename = "SPI.asm"
+    filename = "BASIC.asm"
     #filename = "asm files\\super_simple_halt.asm"
     asm = Assembler(filename,memory,"")
     success = asm.assemble()
