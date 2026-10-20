@@ -15,6 +15,7 @@ class Assembler:
     EQU_SYMBOL = 263
 
     CMP_CHAR = 264
+    MOVA_CHAR = 265
 
     
     def __init__(self,filename,memory,text="",loadPOS=0):
@@ -90,6 +91,9 @@ class Assembler:
         return None
     
     def add_label(self,newlabel,address):
+        if " " in newlabel:
+            print("whitespace not permitted in label declaration:",newlabel)
+            return False
         if newlabel in self.labels:
             print("ERROR: Label '"+newlabel+"' already declared!")
             return False
@@ -280,6 +284,12 @@ class Assembler:
                 self.write_memory(self.pointer,CMP_OPCODE)
                 self.write_memory(self.pointer+1,cmp_byte)
                 self.pointer+=2
+            elif opcode == self.MOVA_CHAR:
+                cmp_byte = ord(asm[1])
+                CMP_OPCODE = self.machinecode("MOV A,0x00")[0]
+                self.write_memory(self.pointer,CMP_OPCODE)
+                self.write_memory(self.pointer+1,cmp_byte)
+                self.pointer+=2
             elif opcode == self.EQU_SYMBOL:
                 if self.add_equ_symbol(asm[1],asm[2])==False:
                     print("Symbol",asm[1],"already defined on line:",line_number)
@@ -461,6 +471,7 @@ class Assembler:
         self.asmregex.append(("^MOV U,'(.)'$",self.UART_CHAR))
         # cmp A,'A' (i.e. ord("A"))
         self.asmregex.append(("^CMP A,'(.)'$",self.CMP_CHAR))
+        self.asmregex.append(("^MOV A,'(.)'$",self.MOVA_CHAR))
 
         # EQU symbol support
         self.asmregex.append(("^(.*) equ (.*)$",self.EQU_SYMBOL))
@@ -477,7 +488,7 @@ class Assembler:
             if match_result:
                 machine_code.append(opcode)
                 for match in match_result.groups():
-                    if opcode!=self.DATASTRING and opcode!=self.UART_CHAR and opcode!=self.CMP_CHAR:
+                    if opcode!=self.DATASTRING and opcode!=self.UART_CHAR and opcode!=self.CMP_CHAR and opcode!=self.MOVA_CHAR:
                         try:
                             machine_code.append(int("0x"+match,16))
                         except ValueError:
