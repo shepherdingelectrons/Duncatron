@@ -28,21 +28,24 @@ AST_BINARY_OP equ 0xAA
 ; 1: Data byte 0
 ; 2: Data byte 1
 
+; 0404
 doStuff:
-
-	;mov A,0x00
-	;mov r5,0x02
+	mov r0r1,test_str
+	mov r4,0x00
+	mov r5,0x04
+	mov r2r3, integer_area
+	push_pc+1
+	call str_to_integer
 	
-	;cmp A,r5
-	;jle zerolessthanfive
-	;mov U,'>'
-	;pop t
-	;ret
+	mov r0r1,test_str2
+	mov r4,0x00
+	mov r5,0x02
+	mov r2r3, integer_area2
+	push_pc+1
+	call str_to_integer
 	
-	;zerolessthanfive:
-	;mov U,'<'
-	;pop t
-	;ret
+	pop T
+	ret
 
 	push_pc+1
 	call Tokenise
@@ -56,6 +59,256 @@ doStuff:
 doStuff.exit:
 	pop T
 	ret
+
+test_str:
+dstr '1234' ;0xd2 0x04 0x00 (0x4d2)
+
+test_str2:
+dstr '69' ;0x45 0x00 0x00 (0x45)
+
+integer_area:
+db [8]
+integer_area2:
+db [8]
+mul_product:	; 0x9A 0x4C 0x01 (0x14C9A)
+db [8]
+
+mul24:
+	; input and outputs are hardcoded to certain areas of memory
+	
+	;r0r1 - pointer to memory with 24-bit number #1 (a)
+	;r2r3 - pointer to memory with 24-bit number #2 (b)
+	;r4r5 - pointer to product destination memory (c)
+
+    ;c=0
+    ;for i in range(0,24):
+    ;    if b&1:
+    ;        c+=a
+    ;    a<<=1
+    ;    b>>=1
+	mov r4,0x18 ; 24 bits
+	mov r0r1,mul_product
+	mov [r0r1],0x00
+	inc r0r1
+	mov [r0r1],0x00
+	inc r0r1
+	mov [r0r1],0x00	; set product (c) = 0
+	
+	mul24.loop:
+		mov r2r3,integer_area2 ; point to LSB byte	
+		mov A,[r2r3]
+		and A,0x01
+		jz mul24.skip_addition
+		;24-bit addition
+			mov r0r1,integer_area
+			mov r2r3,mul_product
+			
+			mov A,[r0r1]	; first byte of number a
+			push A
+			mov A,[r2r3]	;first byte of product
+			pop B
+			add A,B
+			push F	; save carry flag
+			mov [r2r3],A
+			
+			inc r0r1
+			inc r2r3
+			
+			pop F	; restore carry flag
+			mov A,[r0r1]	; 2nd byte of number a
+			push A
+			mov A,[r2r3]	;2nd byte of product
+			pop B
+			addc A,B		
+			push F
+			mov [r2r3],A
+			
+			inc r0r1
+			inc r2r3
+			
+			pop F
+			mov A,[r0r1]	; 3rd byte of number a
+			push A
+			mov A,[r2r3]	;3rd byte of product
+			pop B
+			addc A,B
+			mov [r2r3],A	
+	mul24.skip_addition:
+		; a<<=1
+		mov r0r1,integer_area	; LSB first, carry cascades into MSB
+		mov A,[r0r1]
+		shl A
+		push F
+		mov [r0r1],A
+		
+		inc r0r1
+		pop F
+		mov A,[r0r1]
+		rcl A
+		push F
+		mov [r0r1],A
+		
+		inc r0r1
+		pop F
+		mov A,[r0r1]
+		rcl A
+		mov [r0r1],A
+		
+		; b>>=1
+		mov r2r3,integer_area2
+		mov A,[r2r3]
+		push A	; LSB
+		inc r2r3
+		mov A,[r2r3]
+		push A	; second byte
+		inc r2r3
+		mov A,[r2r3]
+		mov r0,A ; MSB
+		
+		mov r5,0x00
+		and A,0x01
+		jz skipcarry0
+		mov r5,0x80
+		
+		skipcarry0:
+		mov A,r0	; restore 1st byte
+		shr A		; carry right flag set in r5
+		mov [r2r3],A ; store it back into MSB
+		
+		mov r2r3,integer_area2
+		inc r2r3
+		pop A		; 2nd byte
+		mov r0,A
+		
+		; test 2nd byte for carry
+		mov r1,0x00
+		and A,0x01
+		jz skipcarry1
+		mov r1,0x80
+		
+		skipcarry1:
+		mov A,r0
+		shr A
+		mov B,r5
+		or A,B
+		mov [r2r3],A	; save 2nd byte
+		
+		mov r2r3,integer_area2
+		pop A 	; LSB
+		shr A
+		mov B,r1
+		or A,B
+		mov [r2r3],A
+		; done
+		dec r4
+		jnz mul24.loop
+	pop T
+	ret
+str_to_integer:
+;r0r1 - pointer to original string
+;r2r3 - address to put final data bytes
+;r4 - start position in string
+;r5 - end position in string (-1)
+	mov A,r1
+	add A,r4
+	mov r1,A
+	mov A,r0
+	addc A,0x00
+	mov r0,A
+	
+	mov A,r5
+	sub A,r4
+	mov r5,A		; r5 holds number of characters to consider for loop counter
+	;r4 is free
+	
+	push r2
+	push r3		; save r2r3 for later
+	; can now use r2,r3 and r4 for 24-bit representations
+	mov r2,0x00
+	mov r3,r2
+	mov r4,r2	; result = 0
+	
+	str_to_integer.loop:
+		mov A,[r0r1]
+		sub A,0x30 ; minus chr('0')
+		add A,r4
+		mov r4,A
+		mov A,r3
+		addc A,0x00
+		mov r3,A
+		mov A,r2
+		addc A,0x00
+		mov r2,A		; r2r3r4 += (int_char-'0')
+		
+		mov A,r5
+		cmp A,0x01	; last character
+		je str_to_integer.exit
+		;if not the digits column, then multiply the current result by 10:
+		push r5
+		mov r5,0x03
+		
+		str_to_integer.shift3:
+			mov A,r4
+			shl A
+			mov r4,A
+			mov A,r3
+			rcl A
+			mov r3,A
+			mov A,r2
+			rcl A
+			mov r2,A	; result << 1 (then <<2, <<3)
+			
+			push r2
+			push r3
+			push r4
+			
+			dec r5
+			jnz str_to_integer.shift3
+			; exit shift3 loop here
+		pop r4
+		pop r3
+		pop r2 	; result = (result<<3)
+			
+		pop A
+		pop A
+		pop A	; discard (result<<2)
+			
+		pop A	; result<<1 r4
+		add A,r4
+		mov r4,A
+		pop A	; result<<1 r3
+		addc A,r3
+		mov r3,A
+		pop A	; result<<1 r2
+		addc A,r2
+		mov r2,A
+			; could raise an alert here if carry is set...
+			
+			; got here result = (result<<3) + (result<<1)
+		pop r5	; restore character counter loop
+		inc r0r1 ; next character
+		dec r5
+		jnz str_to_integer.loop
+str_to_integer.exit:
+	; got 24-bit number in (MSB) r2:r3:r4 (LSB)
+	; store in (LSB) r4:r3:r2 (MSB)
+	pop r1	; r3
+	pop r0	; r2
+	
+	mov A,r4
+	mov [r0r1],A
+	inc r0r1
+	mov A,r3
+	mov [r0r1],A
+	inc r0r1
+	mov A,r2
+	mov [r0r1],A
+	
+	pop T
+	ret
+	
+
+
 Tokenise:
 ; Input: 
 ; r0r1 - pointer to SOURCE_STR, zero terminated string
@@ -539,6 +792,10 @@ build_AST:
 	add A,r2
 	mov U,A
 	
+	; returns parent AST node id = r2
+	; r0r1 holds position of next token
+	; r3 holds the number of nodes allocated in total
+	
 	pop T
 	ret
 ; need to add some kind of error handling for AST tree building
@@ -550,7 +807,7 @@ TOKEN_DATA:
 db [255]	; bit of padding
 AST_NODES:
 ; current data structure:
-; NODE_TYPE,value (ie for binary_op), left, right.
-dstr 'AST'
+; Bin op: AST_BINARY_OP,right,value (ie for binary_op), left
+; Number: AST_NUMBER,byte0,byte1,byte2
 
-; epFepnbpn2#0%bp£4!4#0%0bpn4#0%0%0%B{!/
+dstr 'AST'
